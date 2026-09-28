@@ -5,12 +5,14 @@
 use image::{DynamicImage, GenericImageView};
 use jxl_oxide::integration::JxlDecoder;
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 enum Expect {
     /// Lossless: decoded pixels must match the source bit-exactly.
     Exact,
     /// Lossy/transcode: must decode; report PSNR and max error.
     Report,
+    /// Must decode without error only (e.g. orientation swaps dimensions).
+    DecodeOnly,
 }
 
 struct Case {
@@ -23,7 +25,27 @@ const CASES: &[Case] = &[
     // ---- lossless: bit-exact roundtrip required ----
     Case {
         src: "test-images/rgb.png",
-        jxl: "test-output/lossless.jxl",
+        jxl: "test-output/lossless-q100.jxl",
+        expect: Expect::Exact,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/lossless-d0.jxl",
+        expect: Expect::Exact,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/threads-0.jxl",
+        expect: Expect::Exact,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/threads-4.jxl",
+        expect: Expect::Exact,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/fd3-lossless.jxl",
         expect: Expect::Exact,
     },
     Case {
@@ -37,8 +59,8 @@ const CASES: &[Case] = &[
         expect: Expect::Exact,
     },
     Case {
-        src: "test-images/rgba.png",
-        jxl: "test-output/rgba-fl.jxl",
+        src: "test-images/rgba_opaque.png",
+        jxl: "test-output/rgba-strip1.jxl",
         expect: Expect::Exact,
     },
     Case {
@@ -57,6 +79,11 @@ const CASES: &[Case] = &[
         expect: Expect::Exact,
     },
     Case {
+        src: "test-images/graya16.png",
+        jxl: "test-output/graya16-lossless.jxl",
+        expect: Expect::Exact,
+    },
+    Case {
         src: "test-images/rgb16.png",
         jxl: "test-output/rgb16-lossless.jxl",
         expect: Expect::Exact,
@@ -67,29 +94,54 @@ const CASES: &[Case] = &[
         expect: Expect::Exact,
     },
     Case {
-        src: "test-images/graya16.png",
-        jxl: "test-output/graya16-lossless.jxl",
+        src: "test-images/rgba16.png",
+        jxl: "test-output/rgba16-lossless.jxl",
+        expect: Expect::Exact,
+    },
+    Case {
+        src: "test-images/rgb.jpg",
+        jxl: "test-output/jpeg-pixels-lossless.jxl",
         expect: Expect::Exact,
     },
     // ---- lossy: must decode with acceptable fidelity ----
     Case {
         src: "test-images/rgb.png",
-        jxl: "test-output/lossy-q90.jxl",
+        jxl: "test-output/lossy-default.jxl",
         expect: Expect::Report,
     },
     Case {
         src: "test-images/rgb.png",
-        jxl: "test-output/lossy-q30.jxl",
+        jxl: "test-output/lossy-d05.jxl",
         expect: Expect::Report,
     },
     Case {
         src: "test-images/rgb.png",
-        jxl: "test-output/lossy-slow.jxl",
+        jxl: "test-output/lossy-q85.jxl",
         expect: Expect::Report,
     },
     Case {
         src: "test-images/rgb.png",
-        jxl: "test-output/lossy-fastest.jxl",
+        jxl: "test-output/lossy-e2.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/slow-e9.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/splines-e9.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/modular-lossy.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/modular-auto.jxl",
         expect: Expect::Report,
     },
     Case {
@@ -99,17 +151,7 @@ const CASES: &[Case] = &[
     },
     Case {
         src: "test-images/rgb.png",
-        jxl: "test-output/lossy-mod-auto.jxl",
-        expect: Expect::Report,
-    },
-    Case {
-        src: "test-images/rgb.png",
-        jxl: "test-output/splines.jxl",
-        expect: Expect::Report,
-    },
-    Case {
-        src: "test-images/rgb.png",
-        jxl: "test-output/threads-2.jxl",
+        jxl: "test-output/no-patches.jxl",
         expect: Expect::Report,
     },
     Case {
@@ -119,32 +161,37 @@ const CASES: &[Case] = &[
     },
     Case {
         src: "test-images/rgba.png",
-        jxl: "test-output/rgba.jxl",
+        jxl: "test-output/rgba-default.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgba_opaque.png",
+        jxl: "test-output/rgbaop-lossy.jxl",
         expect: Expect::Report,
     },
     Case {
         src: "test-images/gray.png",
-        jxl: "test-output/gray.jxl",
+        jxl: "test-output/gray-lossy.jxl",
         expect: Expect::Report,
     },
     Case {
         src: "test-images/gray16.png",
-        jxl: "test-output/gray16.jxl",
+        jxl: "test-output/gray16-lossy.jxl",
         expect: Expect::Report,
     },
     Case {
         src: "test-images/rgb16.png",
-        jxl: "test-output/rgb16.jxl",
+        jxl: "test-output/rgb16-lossy.jxl",
         expect: Expect::Report,
     },
     Case {
         src: "test-images/rgb16.png",
-        jxl: "test-output/rgb16-fastest.jxl",
+        jxl: "test-output/rgb16-e2.jxl",
         expect: Expect::Report,
     },
     Case {
         src: "test-images/rgba16.png",
-        jxl: "test-output/rgba16.jxl",
+        jxl: "test-output/rgba16-lossy.jxl",
         expect: Expect::Report,
     },
     Case {
@@ -152,11 +199,22 @@ const CASES: &[Case] = &[
         jxl: "test-output/rgbf-exr.jxl",
         expect: Expect::Report,
     },
-    // ---- JPEG transcode: decode must match the original JPEG's pixels ----
+    // ---- JPEG paths ----
     Case {
         src: "test-images/rgb.jpg",
-        jxl: "test-output/jpeg-transcode.jxl",
+        jxl: "test-output/jpeg-implicit.jxl",
         expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.jpg",
+        jxl: "test-output/jpeg-pixels.jxl",
+        expect: Expect::Report,
+    },
+    // ---- orientation changes rendered size ----
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/orient-6.jxl",
+        expect: Expect::DecodeOnly,
     },
 ];
 
@@ -164,10 +222,10 @@ fn main() {
     let mut failures = 0usize;
     for case in CASES {
         match run_case(case) {
-            Ok(msg) => println!("OK   {:<26} {msg}", name(case.jxl)),
+            Ok(msg) => println!("OK   {:<28} {msg}", name(case.jxl)),
             Err(e) => {
                 failures += 1;
-                println!("FAIL {:<26} {e}", name(case.jxl));
+                println!("FAIL {:<28} {e}", name(case.jxl));
             }
         }
     }
@@ -194,6 +252,10 @@ fn run_case(case: &Case) -> Result<String, String> {
     let src = image::open(case.src).map_err(|e| format!("source open: {e}"))?;
     let dec = decode_jxl(case.jxl)?;
 
+    if case.expect == Expect::DecodeOnly {
+        return Ok(format!("decoded {}x{}", dec.width(), dec.height()));
+    }
+
     if src.dimensions() != dec.dimensions() {
         return Err(format!(
             "dimension mismatch: source {}x{}, decoded {}x{}",
@@ -214,11 +276,12 @@ fn run_case(case: &Case) -> Result<String, String> {
         for ca in 0..4 {
             let va = pa.0[ca];
             let vb = pb.0[ca];
-            let d = (va - vb).abs();
-            if d > max_diff {
-                max_diff = d;
+            let diff = (va - vb).abs();
+            if diff > max_diff {
+                max_diff = diff;
             }
-            sq_err += (f64::from(va) - f64::from(vb)) * (f64::from(va) - f64::from(vb));
+            let df = f64::from(va) - f64::from(vb);
+            sq_err += df * df;
             n += 1;
         }
     }
@@ -241,7 +304,7 @@ fn run_case(case: &Case) -> Result<String, String> {
                 Err(format!("NOT bit-exact: max sample diff {max_diff}"))
             }
         }
-        Expect::Report => Ok(format!(
+        _ => Ok(format!(
             "decoded {}x{}, PSNR {:.1} dB, max diff {:.4}",
             src.width(),
             src.height(),

@@ -47,6 +47,19 @@ fn main() {
     la16.save(std::path::Path::new(out_dir).join("graya16.png"))
         .unwrap();
 
+    // 8-bit RGBA with fully opaque alpha (tests --strip_alpha auto behavior)
+    let rgba8: ImageBuffer<Rgba<u8>, Vec<u8>> = ImageBuffer::from_fn(w, h, |x, y| {
+        Rgba([
+            (x * 255 / (w - 1)) as u8,
+            (y * 255 / (h - 1)) as u8,
+            200,
+            255,
+        ])
+    });
+    rgba8
+        .save(std::path::Path::new(out_dir).join("rgba_opaque.png"))
+        .unwrap();
+
     // 32-bit float RGB -> OpenEXR
     let rgbf: ImageBuffer<Rgb<f32>, Vec<f32>> = ImageBuffer::from_fn(w, h, |x, y| {
         Rgb([

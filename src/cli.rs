@@ -1,135 +1,224 @@
-//! CLI argument definitions for jixel-cli
+//! CLI arguments for jixel-cli, aligned with libjxl's `cjxl`.
+//!
+//! Long/short flag spellings and value semantics follow `cjxl` (main branch)
+//! wherever jixel's API can express them. jixel-only extensions are marked.
 
 use std::path::PathBuf;
 
-use clap::{Parser, ValueEnum};
+use clap::{ArgAction, Parser, ValueEnum};
 use jixel::{ColorEncoding, DecodingSpeed, FlMeta, LossyModular, Speed};
+
+/// Parse a bounded float flag value with a cjxl-style message.
+fn bounded_f32(min: f32, max: f32) -> impl Fn(&str) -> Result<f32, String> + Clone {
+    move |s: &str| {
+        let v: f32 = s.parse().map_err(|e| format!("invalid float: {e}"))?;
+        if v.is_finite() && (min..=max).contains(&v) {
+            Ok(v)
+        } else {
+            Err(format!("{v} is not in {min}..={max}"))
+        }
+    }
+}
 
 #[derive(Parser, Debug)]
 #[command(
     name = "jixel-cli",
     version,
-    about = "JPEG XL encoder CLI built on the jixel library"
+    about = "JPEG XL encoder (cjxl-compatible CLI on top of jixel)"
 )]
 pub struct Args {
-    /// Input image file (PNG, JPEG, BMP, TIFF, WebP, etc.)
-    #[arg(value_name = "INPUT")]
+    /// the input image (PNG, JPEG, GIF, PNM, WebP, EXR, ...)
     pub input: PathBuf,
 
-    /// Output .jxl file (default: input with .jxl extension)
-    #[arg(short, long, value_name = "OUTPUT")]
+    /// the compressed JXL output file (default: INPUT with .jxl)
+    #[arg(value_name = "OUTPUT")]
     pub output: Option<PathBuf>,
 
-    /// Quality 1-100 for lossy encoding (ignored for lossless)
+    /// Target visual distance in JND units, 0.0 .. 25.0.
+    ///   0.0 = lossless (default for JPEG/GIF input).
+    ///   1.0 = visually lossless (default otherwise).
     #[arg(
         short,
         long,
-        default_value = "90",
-        value_parser = clap::value_parser!(u32).range(1..=100)
+        value_name = "DISTANCE",
+        value_parser = bounded_f32(0.0, 25.0)
     )]
-    pub quality: u32,
+    pub distance: Option<f32>,
 
-    /// Lossless encoding via the modular encoder
-    #[arg(long)]
-    pub lossless: bool,
+    /// Quality 0 .. 100, mapped to --distance (100 = lossless).
+    /// Mutually exclusive with --distance.
+    #[arg(
+        short,
+        long,
+        value_name = "QUALITY",
+        value_parser = bounded_f32(0.0, 100.0)
+    )]
+    pub quality: Option<f32>,
 
-    /// Fast-lossless encoder (integer images only; ignores --speed/--threads)
-    #[arg(long, conflicts_with = "lossless")]
-    pub fast_lossless: bool,
+    /// Encoder effort, 1 .. 10 (default 7). Higher = smaller output at the
+    /// same quality. Mapped onto jixel's three speed tiers.
+    #[arg(
+        short,
+        long,
+        value_name = "EFFORT",
+        default_value_t = 7,
+        value_parser = clap::value_parser!(u32).range(1..=10)
+    )]
+    pub effort: u32,
 
-    /// Encoder speed/quality tradeoff
-    #[arg(short, long, value_enum, default_value = "fast")]
-    pub speed: SpeedArg,
+    /// 0 = decode JPEG input to pixels and reencode; 1 = losslessly transcode
+    /// JPEG data (default 1 when the input is a JPEG).
+    #[arg(
+        short = 'j',
+        long = "lossless_jpeg",
+        value_name = "0|1",
+        value_parser = clap::value_parser!(u32).range(0..=1)
+    )]
+    pub lossless_jpeg: Option<u32>,
 
-    /// Decode-speed/density tradeoff (lossless only)
-    #[arg(long, value_enum, default_value = "slow")]
-    pub decoding_speed: DecodingSpeedArg,
+    /// Disable/enable storing JPEG reconstruction metadata with lossless JPEG
+    /// transcoding (default 1).
+    #[arg(
+        long = "allow_jpeg_reconstruction",
+        value_name = "0|1",
+        default_value_t = 1,
+        value_parser = clap::value_parser!(u32).range(0..=1)
+    )]
+    pub allow_jpeg_reconstruction: u32,
 
-    /// Color encoding written into the codestream
-    #[arg(long, value_enum, default_value = "srgb")]
-    pub color_space: ColorSpaceArg,
+    /// 0 = use VarDCT mode, 1 = use Modular mode, 2 = heuristic "auto"
+    /// (jixel both-arms extension). Lossy only.
+    #[arg(short, long, value_name = "MODULAR", value_enum, default_value = "0")]
+    pub modular: ModularArg,
 
-    /// Drop the alpha channel even if the input has one
-    #[arg(long)]
-    pub no_alpha: bool,
-
-    /// Progressive encoding
-    #[arg(long)]
+    /// More progressive/responsive decoding.
+    #[arg(short, long)]
     pub progressive: bool,
 
-    /// Disable the patch dictionary (enabled by default)
-    #[arg(long)]
-    pub no_patches: bool,
+    /// Alpha stripping mode:
+    ///   -1 = encoder chooses (strip if empty for lossy, keep for lossless)
+    ///    0 = never strip.  1 = always strip.  2 = strip if fully opaque.
+    #[arg(
+        long = "strip_alpha",
+        value_name = "-1|0|1|2",
+        default_value_t = -1,
+        value_parser = clap::value_parser!(i8).range(-1..=2)
+    )]
+    pub strip_alpha: i8,
 
-    /// Enable experimental spline detection (Slow speed only)
-    #[arg(long)]
-    pub splines: bool,
+    /// Higher values improve decode speed at the expense of quality or
+    /// density, 0 .. 4 (default 0). Lossless only.
+    #[arg(
+        long = "faster_decoding",
+        value_name = "0..4",
+        default_value_t = 0,
+        value_parser = clap::value_parser!(u32).range(0..=4)
+    )]
+    pub faster_decoding: u32,
 
-    /// Lossy modular arm selection (Slow speed only)
-    #[arg(long, value_enum)]
-    pub lossy_modular: Option<LossyModularArg>,
+    /// Number of worker threads (default -1).
+    ///   -1 = machine default.  0 = do not use multithreading.
+    #[arg(
+        long = "num_threads",
+        value_name = "THREADS",
+        default_value_t = -1,
+        value_parser = clap::value_parser!(i64).range(-1..)
+    )]
+    pub num_threads: i64,
 
-    /// Thread count (0 = auto-detect)
-    #[arg(short = 'j', long, default_value = "0")]
-    pub threads: usize,
+    /// 0 = do not use the container format unless it is needed (jixel's only
+    /// mode). 1 is rejected: jixel cannot force a container.
+    #[arg(long, value_name = "0|1", value_parser = clap::value_parser!(u32).range(0..=1))]
+    pub container: Option<u32>,
 
-    /// Embed an ICC profile from file (forces container output)
-    #[arg(long, value_name = "ICC_FILE")]
-    pub icc_profile: Option<PathBuf>,
+    /// 0 = disable patches, 1 = enable. Default = encoder chooses
+    /// (enabled, but disabled automatically with --progressive).
+    #[arg(long, value_name = "0|1", value_parser = clap::value_parser!(u32).range(0..=1))]
+    pub patches: Option<u32>,
 
-    /// EXIF orientation value (1-8) to signal for display
-    #[arg(long, value_parser = clap::value_parser!(u8).range(1..=8))]
-    pub orientation: Option<u8>,
+    /// Upper bound on the intensity level present in the image, in nits.
+    /// 0 = choose a sensible value based on the color encoding (default).
+    #[arg(
+        long = "intensity_target",
+        value_name = "NITS",
+        default_value_t = 0.0,
+        value_parser = bounded_f32(0.0, f32::INFINITY)
+    )]
+    pub intensity_target: f32,
 
-    /// Losslessly transcode a JPEG file (input must be a real JPEG)
-    #[arg(long)]
-    pub jpeg_lossless: bool,
-
-    /// Suppress progress output
+    /// Minimal printing.
     #[arg(long)]
     pub quiet: bool,
 
-    /// Extra diagnostics
+    /// Verbose printing; can be repeated.
+    #[arg(short, long, action = ArgAction::Count)]
+    pub verbose: u8,
+
+    // ---------- jixel-only extensions (no cjxl equivalent) ----------
+    /// Lossless encoding, alias for --distance=0 (pixel path).
     #[arg(long)]
-    pub verbose: bool,
+    pub lossless: bool,
+
+    /// jixel fast-lossless encoder (8/16-bit integer images only).
+    #[arg(long)]
+    pub fast_lossless: bool,
+
+    /// Enable experimental spline detection (jixel; needs effort >= 9).
+    #[arg(long)]
+    pub splines: bool,
+
+    /// Color encoding written into the codestream (jixel presets).
+    #[arg(long, value_enum, default_value = "srgb")]
+    pub color_space: ColorSpaceArg,
+
+    /// Embed an ICC profile from file (forces the container form).
+    #[arg(long, value_name = "ICC_FILE")]
+    pub icc_profile: Option<PathBuf>,
+
+    /// EXIF orientation value (1-8) to signal for display.
+    #[arg(long, value_parser = clap::value_parser!(u8).range(1..=8))]
+    pub orientation: Option<u8>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum SpeedArg {
-    /// No transform search: plain 8x8 DCT blocks
-    Fastest,
-    /// Balanced (default)
-    Fast,
-    /// Full transform search; required for splines/lossy-modular
-    Slow,
+pub enum ModularArg {
+    /// VarDCT mode (cjxl `-m 0`).
+    #[value(alias = "0")]
+    Vardct,
+    /// Modular mode (cjxl `-m 1`).
+    #[value(alias = "1")]
+    Modular,
+    /// Heuristic: encode both arms, keep the smaller (jixel `Auto`).
+    #[value(alias = "2", alias = "auto")]
+    Auto,
 }
 
-impl From<SpeedArg> for Speed {
-    fn from(v: SpeedArg) -> Self {
+impl From<ModularArg> for LossyModular {
+    fn from(v: ModularArg) -> Self {
         match v {
-            SpeedArg::Fastest => Speed::Fastest,
-            SpeedArg::Fast => Speed::Fast,
-            SpeedArg::Slow => Speed::Slow,
+            ModularArg::Vardct => LossyModular::Off,
+            ModularArg::Modular => LossyModular::Force,
+            ModularArg::Auto => LossyModular::Auto,
         }
     }
 }
 
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum DecodingSpeedArg {
-    /// No weighted predictor, no meta-adaptive trees
-    Fastest,
-    /// No weighted predictor
-    Fast,
-    /// All coding tools, densest output (default)
-    Slow,
-}
+impl Args {
+    /// Resolve the cjxl effort range onto jixel's three speed tiers.
+    pub fn speed(&self) -> Speed {
+        match self.effort {
+            1..=3 => Speed::Fastest,
+            4..=8 => Speed::Fast,
+            _ => Speed::Slow,
+        }
+    }
 
-impl From<DecodingSpeedArg> for DecodingSpeed {
-    fn from(v: DecodingSpeedArg) -> Self {
-        match v {
-            DecodingSpeedArg::Fastest => DecodingSpeed::Fastest,
-            DecodingSpeedArg::Fast => DecodingSpeed::Fast,
-            DecodingSpeedArg::Slow => DecodingSpeed::Slow,
+    /// Resolve cjxl `--faster_decoding` 0..4 onto jixel's DecodingSpeed.
+    pub fn decoding_speed(&self) -> DecodingSpeed {
+        match self.faster_decoding {
+            0 => DecodingSpeed::Slow,
+            1..=2 => DecodingSpeed::Fast,
+            _ => DecodingSpeed::Fastest,
         }
     }
 }
@@ -166,26 +255,6 @@ impl ColorSpaceArg {
             ColorSpaceArg::DisplayP3 => FlMeta::display_p3(),
             ColorSpaceArg::Bt2020Pq => FlMeta::rec2100_pq(),
             ColorSpaceArg::Bt2020Hlg => FlMeta::rec2100_hlg(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, ValueEnum)]
-pub enum LossyModularArg {
-    /// VarDCT only (default)
-    Off,
-    /// Encode both arms, keep the smaller (Slow speed)
-    Auto,
-    /// Force the modular arm where supported (Slow speed)
-    Force,
-}
-
-impl From<LossyModularArg> for LossyModular {
-    fn from(v: LossyModularArg) -> Self {
-        match v {
-            LossyModularArg::Off => LossyModular::Off,
-            LossyModularArg::Auto => LossyModular::Auto,
-            LossyModularArg::Force => LossyModular::Force,
         }
     }
 }
