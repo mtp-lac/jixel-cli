@@ -6,7 +6,7 @@ semantics for everything the jixel 0.3 public API can express. jixel-only
 extensions are listed separately; flags jixel cannot implement are *not*
 silently accepted.
 
-```
+```text
 cjxl       [OPTIONS] INPUT OUTPUT
 jixel-cli  [OPTIONS] INPUT [OUTPUT]
 ```
@@ -28,23 +28,23 @@ jixel-cli  [OPTIONS] INPUT [OUTPUT]
 | `-V, --version` | print version, exit 0 | ✓ |
 | `--quiet` (no short!) | minimal printing | ✓ |
 | `-v, --verbose` (repeatable) | extra info | ✓ (counted) |
-| `--strip_alpha <-1|0|1|2>` | -1 encoder chooses (lossy: strip if empty; lossless: keep), 0 keep, 1 strip, 2 strip-if-opaque | ✓ incl. the empty-alpha scan |
+| `--strip_alpha <-1\|0\|1\|2>` | -1 encoder chooses (lossy: strip if empty; lossless: keep), 0 keep, 1 strip, 2 strip-if-opaque | ✓ incl. the empty-alpha scan |
 | `-p, --progressive` | flag | ✓; like cjxl it also disables `patches` when unspecified |
-| `-m, --modular <0|1>` | 0 VarDCT, 1 Modular (lossy) | ✓; extension value `2`/`auto` = jixel's both-arms heuristic |
-| `-j, --lossless_jpeg <0|1>` (default 1 for JPEG magic) | implicit JPEG transcode; forced off for non-JPEG; error if combined with non-zero distance | ✓ identical auto-detect (FFD8 magic), identical note "Implicit-default for JPEG is lossless-transcoding...", identical conflict error |
-| `--allow_jpeg_reconstruction <0|1>` | store/drop JBRD reconstruction box | ✓ (dropping yields a bare codestream, like cjxl) |
-| `--num_threads <-1|0|N>` | -1 machine default, 0 no MT | ✓ (0 maps to jixel 1 thread) |
+| `-m, --modular <0\|1>` | 0 VarDCT, 1 Modular (lossy) | ✓; extension value `2`/`auto` = jixel's both-arms heuristic |
+| `-j, --lossless_jpeg <0\|1>` (default 1 for JPEG magic) | implicit JPEG transcode; forced off for non-JPEG; error if combined with non-zero distance | ✓ identical auto-detect (FFD8 magic), identical note "Implicit-default for JPEG is lossless-transcoding...", identical conflict error |
+| `--allow_jpeg_reconstruction <0\|1>` | store/drop JBRD reconstruction box | ✓ (dropping yields a bare codestream, like cjxl) |
+| `--num_threads <-1\|0\|N>` | -1 machine default, 0 no MT | ✓ (0 maps to jixel 1 thread) |
 | `--faster_decoding <0..4>` | decode-speed vs density | ✓ mapped to jixel's 3 levels: 0→Slow, 1–2→Fast, 3–4→Fastest (lossless only, same as jixel) |
-| `--patches <0|1>` | encoder chooses default | ✓ default = enabled, auto-disabled with `--progressive` (cjxl rule) |
+| `--patches <0\|1>` | encoder chooses default | ✓ default = enabled, auto-disabled with `--progressive` (cjxl rule) |
 | `--intensity_target <nits>` | 0 = auto | ✓ |
-| `--container <0|1>` | 1 forces container | accepts `0`/unset only; `1` **errors**: jixel has no force-container API (metadata auto-switches to container exactly like cjxl's forced promotion) |
+| `--container <0\|1>` | 1 forces container | accepts `0`/unset only; `1` **errors**: jixel has no force-container API (metadata auto-switches to container exactly like cjxl's forced promotion) |
 | Exit codes | 0 ok/help/version, 1 parse/arg/run errors | ✓ (clap's default 2 is remapped to 1) |
 | Status lines | `Encoding [VarDCT\|Modular\|JPEG, dX.ddd\|lossless\|lossless transcode, effort: N]`, `Compressed to N bytes (x.xxx bpp).`, `Using N threads, average speed: X MP/s.` | ✓ reproduced |
 
 ## jixel-only extensions (no cjxl equivalent — not compared)
 
 `--lossless` (alias of `-d 0`), `--fast-lossless`, `--splines`,
-`--color-space <srgb|srgb-linear|display-p3|bt2020-pq|bt2020-hlg>`,
+`--color-space <srgb\|srgb-linear\|display-p3\|bt2020-pq\|bt2020-hlg>`,
 `--icc-profile <FILE>`, `--orientation <1-8>`.
 
 Note: cjxl expresses color hints as `-x color_space=...` / `-x icc_pathname=...`;

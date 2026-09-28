@@ -35,16 +35,16 @@ jixel-cli.exe icon.png out.jxl --strip_alpha 2 --num_threads 4
 | `-d, --distance <0.0..25.0>` | 0 = lossless. Default 1.0 (JPEG/GIF input: 0) |
 | `-q, --quality <0..100>` | maps to distance; 100 = lossless; exclusive with `-d` |
 | `-e, --effort <1..10>` | default 7; jixel has 3 tiers (1–3 / 4–8 / 9–10) |
-| `-j, --lossless_jpeg <0|1>` | JPEG transcode control; default 1 on JPEG input |
-| `--allow_jpeg_reconstruction <0|1>` | keep/omit the JBRD reconstruction box |
-| `-m, --modular <0|1|2>` | VarDCT / Modular / auto (2 = jixel both-arms) |
+| `-j, --lossless_jpeg <0\|1>` | JPEG transcode control; default 1 on JPEG input |
+| `--allow_jpeg_reconstruction <0\|1>` | keep/omit the JBRD reconstruction box |
+| `-m, --modular <0\|1\|2>` | VarDCT / Modular / auto (2 = jixel both-arms) |
 | `-p, --progressive` | progressive encoding |
-| `--strip_alpha <-1|0|1|2>` | alpha stripping mode (-1 = encoder chooses) |
+| `--strip_alpha <-1\|0\|1\|2>` | alpha stripping mode (-1 = encoder chooses) |
 | `--faster_decoding <0..4>` | lossless decode-speed vs density |
-| `--num_threads <-1|0|N>` | -1 machine default, 0 = single-threaded |
-| `--patches <0|1>` | patch dictionary (default: on, auto-off with `-p`) |
+| `--num_threads <-1\|0\|N>` | -1 machine default, 0 = single-threaded |
+| `--patches <0\|1>` | patch dictionary (default: on, auto-off with `-p`) |
 | `--intensity_target <nits>` | HDR peak luminance hint |
-| `--container <0|1>` | `0`/unset ok; `1` rejected (jixel cannot force containers) |
+| `--container <0\|1>` | `0`/unset ok; `1` rejected (jixel cannot force containers) |
 | `--quiet`, `-v/--verbose`, `-V/--version`, `-h/--help` | as in cjxl |
 
 Output format (`Encoding [VarDCT, d1.000, effort: 7]` /
