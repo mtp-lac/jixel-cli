@@ -1,0 +1,6 @@
+# Cargo configuration for jixel-cli.
+# The sparse crates.io index has been the default since Cargo 1.70; no extra
+# registry settings are required. git-fetch-with-cli helps when corporate
+# TLS interception breaks libgit2's built-in HTTPS stack.
+[net]
+git-fetch-with-cli = true
