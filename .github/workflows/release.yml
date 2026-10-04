@@ -1,9 +1,6 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
 
 env:
@@ -69,24 +66,20 @@ jobs:
       - name: Generate changelog
         id: changelog
         run: |
-          TAG="${{ github.ref_name }}"
-          # When triggered by tag push, compare against the previous tag.
-          if [ -n "$TAG" ]; then
-            PREV_TAG=$(git describe --tags --abbrev=0 ${TAG}^ 2>/dev/null || echo "")
-            if [ -n "$PREV_TAG" ]; then
-              CHANGELOG=$(git log ${PREV_TAG}..${TAG} --pretty=format:"- %s")
-            else
-              CHANGELOG=$(git log --pretty=format:"- %s")
-            fi
+          JXEL_VERSION="${{ needs.build.outputs.jixel_version }}"
+          TAG="v${JXEL_VERSION}"
+
+          # Compare against the previous tag if it exists.
+          PREV_TAG=$(git describe --tags --abbrev=0 ${TAG}^ 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s")
           else
             CHANGELOG=$(git log --pretty=format:"- %s" -n 20)
           fi
 
-          # Default to HEAD version for manual dispatch.
-          JXEL_VERSION="${{ needs.build.outputs.jixel_version }}"
           echo "version=$JXEL_VERSION" >> $GITHUB_OUTPUT
-          echo "tag=v${JXEL_VERSION}" >> $GITHUB_OUTPUT
-          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "changelog<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
@@ -102,7 +95,7 @@ jobs:
             jixel **${{ steps.changelog.outputs.version }}**.
 
             ### Changes
-            ${{ steps.changelog.outputs.CHANGELOG }}
+            ${{ steps.changelog.outputs.changelog }}
           files: ./release/*.zip
           draft: false
           prerelease: false
