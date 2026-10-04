@@ -20,8 +20,12 @@ jobs:
       - name: Extract jixel version
         id: jixel
         run: |
-          JXEL_VERSION=$(grep -oP 'jixel\s*=\s*\{[^}]*version\s*=\s*"\K[^"]+' Cargo.toml | head -1)
-          echo "version=$JXEL_VERSION" >> $GITHUB_OUTPUT
+          $content = Get-Content Cargo.toml -Raw
+          if ($content -match 'jixel\s*=\s*\{[^}]*version\s*=\s*"([^"]+)"') {
+            $ver = $matches[1]
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$ver"
+          }
+          Write-Host "Extracted jixel version: ${{ steps.jixel.outputs.version }}"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
