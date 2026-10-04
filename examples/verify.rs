@@ -235,8 +235,33 @@ const CASES: &[Case] = &[
 ];
 
 fn main() {
+    // Every case reads an encoder output produced by the test matrix
+    // (run-tests.ps1) plus its source fixture. If none of the outputs exist,
+    // the matrix was never run — report that instead of 41 identical
+    // "path not found" failures.
+    if !CASES.iter().any(|c| std::path::Path::new(c.jxl).exists()) {
+        eprintln!(
+            "ERROR: no .jxl files found under test-output/ — run the encode \
+             matrix (run-tests.ps1) before verify."
+        );
+        std::process::exit(2);
+    }
+
     let mut failures = 0usize;
+    let mut missing_outputs = 0usize;
+    let mut missing_sources = 0usize;
     for case in CASES {
+        // Report *both* missing files up front: a fixture the matrix did not
+        // create (e.g. gen-test-images.ps1 not run) is otherwise indistinguishable
+        // from a genuinely unencoded output.
+        let src_missing = !std::path::Path::new(case.src).exists();
+        let jxl_missing = !std::path::Path::new(case.jxl).exists();
+        if src_missing {
+            missing_sources += 1;
+        }
+        if jxl_missing {
+            missing_outputs += 1;
+        }
         match run_case(case) {
             Ok(msg) => println!("OK   {:<28} {msg}", name(case.jxl)),
             Err(e) => {
@@ -249,6 +274,18 @@ fn main() {
     if failures == 0 {
         println!("All {} verification cases passed.", CASES.len());
     } else {
+        if missing_sources > 0 {
+            eprintln!(
+                "note: {missing_sources} case(s) missing source fixtures — run \
+                 gen-test-images.ps1 / gen16 before verify."
+            );
+        }
+        if missing_outputs > 0 {
+            eprintln!(
+                "note: {missing_outputs} case(s) missing test-output/*.jxl — run \
+                 run-tests.ps1 before verify."
+            );
+        }
         println!("{failures} of {} verification cases FAILED.", CASES.len());
         std::process::exit(1);
     }

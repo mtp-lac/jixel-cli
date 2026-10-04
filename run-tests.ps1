@@ -1,7 +1,7 @@
 # jixel-cli test matrix (cjxl-aligned interface). Validates output signatures
 # and expected success/failure per case.
 $ErrorActionPreference = "Continue"
-Set-Location "C:\Users\lamff\Documents\Code\test\jixel-cli"
+Set-Location $PSScriptRoot
 $exe = ".\target\release\jixel-cli.exe"
 $dir = "test-output"
 New-Item -ItemType Directory -Force -Path $dir | Out-Null

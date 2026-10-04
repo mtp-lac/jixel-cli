@@ -34,9 +34,17 @@ jobs:
 
       - name: Run tests
         run: |
+          # Full pipeline: 8-bit fixtures -> 16-bit/float fixtures ->
+          # encode matrix -> jxl-oxide decode verification. gen-test-images
+          # and run-tests must run in the same step (fresh shell per step).
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./gen-test-images.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           cargo run --release --example gen16
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          pwsh -NoProfile -ExecutionPolicy Bypass -File ./run-tests.ps1
+          if ($LASTEXITCODE -ne 0) { exit 1 }
           cargo run --release --example verify
-        continue-on-error: true
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Package executable
         run: |

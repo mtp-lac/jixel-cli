@@ -1,6 +1,6 @@
 # Generate small test images for jixel-cli
 Add-Type -AssemblyName System.Drawing
-$out = "C:\Users\lamff\Documents\Code\test\jixel-cli\test-images"
+$out = Join-Path $PSScriptRoot "test-images"
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 
 function Fill-Bitmap($bmp, $fn) {
