@@ -74,5 +74,37 @@ fn main() {
     )
     .unwrap();
 
+    // 32-bit float RGBA -> OpenEXR (jixel f32 lossless supports alpha)
+    let rgbaf: ImageBuffer<Rgba<f32>, Vec<f32>> = ImageBuffer::from_fn(w, h, |x, y| {
+        Rgba([
+            (x as f32) / (w - 1) as f32,
+            (y as f32) / (h - 1) as f32,
+            0.25f32,
+            (x as f32) / (w - 1) as f32 * 0.5 + 0.5,
+        ])
+    });
+    rgbaf
+        .save_with_format(
+            std::path::Path::new(out_dir).join("rgbaf.exr"),
+            image::ImageFormat::OpenExr,
+        )
+        .unwrap();
+
+    // Negative float samples: jixel's f32 lossless (v1) only accepts finite
+    // non-negative values, so this must be rejected by the library.
+    let rgbf_neg: ImageBuffer<Rgb<f32>, Vec<f32>> = ImageBuffer::from_fn(w, h, |x, y| {
+        Rgb([
+            (x as f32) / (w - 1) as f32 - 0.5,
+            (y as f32) / (h - 1) as f32,
+            0.5f32,
+        ])
+    });
+    rgbf_neg
+        .save_with_format(
+            std::path::Path::new(out_dir).join("rgbf_neg.exr"),
+            image::ImageFormat::OpenExr,
+        )
+        .unwrap();
+
     println!("wrote 16-bit + float test images to {out_dir}/");
 }

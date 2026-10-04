@@ -6,7 +6,7 @@ description = "CLI adapter for jixel JPEG XL encoder"
 license = "BSD-3-Clause OR Apache-2.0"
 
 [dependencies]
-jixel = { version = "0.3", features = ["avx", "sse", "splines"] }
+jixel = { version = "0.3.4", features = ["avx", "sse", "splines"] }
 image = "0.25"
 clap = { version = "4.5", features = ["derive"] }
 anyhow = "1.0"

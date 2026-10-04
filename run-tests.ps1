@@ -80,6 +80,11 @@ Run-Case "rgba16-lossless"   @("test-images\rgba16.png", "$dir\rgba16-lossless.j
 Run-Case "rgba16-lossy"      @("test-images\rgba16.png", "$dir\rgba16-lossy.jxl")
 Run-Case "rgbf-exr"          @("test-images\rgbf.exr", "$dir\rgbf-exr.jxl")
 
+# --- float lossless (jixel encode_f32_lossless_rgba) ---
+Run-Case "rgbf-lossless"     @("test-images\rgbf.exr", "$dir\rgbf-lossless.jxl", "-q", "100")
+Run-Case "rgbaf-lossless"    @("test-images\rgbaf.exr", "$dir\rgbaf-lossless.jxl", "-d", "0")
+Run-Case "rgbaf-lossy"       @("test-images\rgbaf.exr", "$dir\rgbaf-lossy.jxl")
+
 # --- JPEG behavior (cjxl semantics) ---
 Run-Case "jpeg-implicit"     @("test-images\rgb.jpg", "$dir\jpeg-implicit.jxl") -Sig "container"
 Run-Case "jpeg-pixels"       @("test-images\rgb.jpg", "$dir\jpeg-pixels.jxl", "-j", "0")
@@ -93,6 +98,22 @@ Run-Case "err-container1"    @($img, "$dir\neg3.jxl", "--container", "1") -Fail
 Run-Case "err-effort11"      @($img, "$dir\neg4.jxl", "-e", "11") -Fail
 Run-Case "err-fl-on-jpeg"    @("test-images\rgb.jpg", "$dir\neg5.jxl", "--fast-lossless") -Fail
 Run-Case "err-dist-range"    @($img, "$dir\neg6.jxl", "-d", "30") -Fail
+
+# jixel rejects non-finite / negative samples in its f32 lossless path
+Run-Case "err-float-negative" @("test-images\rgbf_neg.exr", "$dir\neg7.jxl", "-d", "0") -Fail
+
+# fast-lossless has no such controls: reject instead of silently ignoring
+Run-Case "err-fl-distance"   @($img, "$dir\neg8.jxl", "--fast-lossless", "-d", "3") -Fail
+Run-Case "err-fl-quality"    @($img, "$dir\neg9.jxl", "--fast-lossless", "-q", "70") -Fail
+Run-Case "err-fl-lossless"   @($img, "$dir\neg10.jxl", "--fast-lossless", "--lossless") -Fail
+Run-Case "err-fl-progressive" @($img, "$dir\neg11.jxl", "--fast-lossless", "-p") -Fail
+Run-Case "err-fl-patches"    @($img, "$dir\neg12.jxl", "--fast-lossless", "--patches", "1") -Fail
+Run-Case "err-fl-fasterdec"  @($img, "$dir\neg13.jxl", "--fast-lossless", "--faster_decoding", "3") -Fail
+Run-Case "err-fl-intensity"  @($img, "$dir\neg14.jxl", "--fast-lossless", "--intensity_target", "1000") -Fail
+Run-Case "err-fl-effort"     @($img, "$dir\neg15.jxl", "--fast-lossless", "-e", "3") -Fail
+Run-Case "err-fl-modular"    @($img, "$dir\neg16.jxl", "--fast-lossless", "-m", "1") -Fail
+Run-Case "err-fl-threads"    @($img, "$dir\neg17.jxl", "--fast-lossless", "--num_threads", "4") -Fail
+Run-Case "err-fl-splines"    @($img, "$dir\neg18.jxl", "--fast-lossless", "--splines") -Fail
 
 Write-Host ""
 Write-Host "Summary: $pass passed, $fail failed" -ForegroundColor $(if ($fail) { "Red" } else { "Green" })

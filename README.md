@@ -2,7 +2,7 @@
 
 A Windows command-line adapter for the [jixel](https://github.com/awxkee/jixel)
 JPEG XL encoder library. The library is used **unmodified** as a crates.io
-dependency (`jixel 0.3`), and the command-line interface follows **libjxl's
+dependency (`jixel 0.3.4`), and the command-line interface follows **libjxl's
 `cjxl`**: same positionals, flag spellings, and default semantics wherever
 jixel's API can express them. See [docs/cjxl-alignment.md](<docs/cjxl-alignment.md>)
 for the full diff.
@@ -54,14 +54,26 @@ mirror cjxl.
 ## jixel-only extensions
 
 `--lossless` (alias `-d 0`), `--fast-lossless`, `--splines`,
-`--color-space <srgb|srgb-linear|display-p3|bt2020-pq|bt2020-hlg>`,
+`--color-space <srgb\|srgb-linear\|display-p3\|bt2020-pq\|bt2020-hlg>`,
 `--icc-profile <FILE>`, `--orientation <1-8>`.
+
+`--fast-lossless` selects jixel's dedicated fast encoder, whose API takes only
+pixels, a color space, an alpha flag and `FlMeta`. It therefore **rejects**
+`-d`, `-q`, `--lossless`, `-e`, `-m`, `-p`, `--patches`, `--faster_decoding`,
+`--intensity_target`, `--num_threads` and `--splines` instead of silently
+ignoring them; `--strip_alpha`, `--color-space`, `--icc-profile` and
+`--orientation` do apply.
 
 ## Supported inputs
 
 PNG, JPEG, GIF, BMP, TIFF, WebP, EXR, HDR… (anything the `image` crate
 decodes; no PNM). Bit depths: 8/16-bit integer (L, LA, RGB, RGBA) and
-32-bit float (RGB/RGBA, lossy only).
+32-bit float (RGB/RGBA), lossy **and** lossless.
+
+Float lossless uses jixel's `encode_f32_lossless_rgba`, which is bit-exact but
+v1-limited to finite, non-negative samples; NaN, infinity or negative values
+are rejected by the library. Such files need codestream level 10 and are
+emitted in container form.
 
 ## Requirements
 
@@ -83,14 +95,14 @@ Test rig:
 ```powershell
 .\gen-test-images.ps1                        # 8-bit PNG/JPEG fixtures
 cargo run --release --example gen16          # 16-bit/float fixtures
-.\run-tests.ps1                              # 45-case cjxl-syntax matrix
-cargo run --release --example verify         # 38 decode checks (jxl-oxide)
+.\run-tests.ps1                              # 60-case cjxl-syntax matrix
+cargo run --release --example verify         # 41 decode checks (jxl-oxide)
 ```
 
 `verify` decodes every output with **jxl-oxide** (independent pure-Rust
-decoder, dev-dependency): 16 lossless streams must round-trip **bit-exact**,
-lossy streams must decode with sane PSNR. Last run: **45/45 encode cases,
-38/38 verification cases**.
+decoder, dev-dependency): 18 lossless streams must round-trip **bit-exact**
+(including 32-bit float RGB and RGBA), lossy streams must decode with sane
+PSNR. Last run: **60/60 encode cases, 41/41 verification cases**.
 
 ## License
 

@@ -39,7 +39,7 @@ jixel-cli  [OPTIONS] INPUT [OUTPUT]
 | `--intensity_target <nits>` | 0 = auto | ✓ |
 | `--container <0\|1>` | 1 forces container | accepts `0`/unset only; `1` **errors**: jixel has no force-container API (metadata auto-switches to container exactly like cjxl's forced promotion) |
 | Exit codes | 0 ok/help/version, 1 parse/arg/run errors | ✓ (clap's default 2 is remapped to 1) |
-| Status lines | `Encoding [VarDCT\|Modular\|JPEG, dX.ddd\|lossless\|lossless transcode, effort: N]`, `Compressed to N bytes (x.xxx bpp).`, `Using N threads, average speed: X MP/s.` | ✓ reproduced |
+| Status lines | `Encoding [VarDCT\|Modular\|JPEG, dX.ddd\|lossless\|lossless transcode, effort: N]`, `Compressed to N bytes (x.xxx bpp).`, `Using N threads, average speed: X MP/s.` | ✓ reproduced (`--fast-lossless` prints `Encoding [Modular, lossless, fast-lossless]` and omits the thread count, since that encoder has neither knob) |
 
 ## jixel-only extensions (no cjxl equivalent — not compared)
 
@@ -80,8 +80,32 @@ main use case for it in cjxl.
 
 ## Known behavioral differences (jixel library limits)
 
-* Float inputs (EXR/HDR): lossy only; `-d 0`/`--lossless` errors instead of
-  silently requantizing (libjxl supports lossless float via modular).
+* Float inputs (EXR/HDR): lossy **and** lossless are supported. `-d 0` /
+  `-q 100` / `--lossless` route to jixel's `encode_f32_lossless_rgba`, which
+  stores each sample's IEEE-754 bits as a modular channel (RGB and RGBA,
+  verified bit-exact). That path is v1-limited to **finite, non-negative**
+  samples; NaN, infinity or negative values are rejected by the library with
+  `f32 lossless v1 supports only finite non-negative values`. f16 input is
+  lossy-only (jixel routes lossless only for 32-bit float).
+* 32-bit float output requires codestream level 10, so float lossless files
+  are emitted in container form.
 * Effort granularity: 3 tiers, not 10.
 * `--faster_decoding`: 3 levels, not 5.
 * Container cannot be forced (`--container=1` errors).
+
+## `--fast-lossless` (jixel extension) accepts only metadata
+
+jixel's `encode_fast_lossless` / `encode_fast_lossless_u16` take just pixels,
+dimensions, a color space, an alpha flag and an `FlMeta`. They have no
+distance, effort, progressive, patches, decoding-speed, tone-mapping, splines
+or thread parameters, so jixel-cli **rejects** those combinations rather than
+accepting a flag it would silently drop:
+
+| Combination | Result |
+|---|---|
+| `--fast-lossless` + `-d` / `-q` / `--lossless` | error (redundant or contradictory) |
+| `--fast-lossless` + `-e`, `-m`, `-p`, `--patches`, `--faster_decoding`, `--intensity_target`, `--num_threads`, `--splines` | error: no such control on this encoder |
+| `--fast-lossless` + `--strip_alpha`, `--color-space`, `--icc-profile`, `--orientation` | supported (these map onto `FlMeta`) |
+
+Because that encoder is single-threaded, its summary line prints
+`Average speed: X MP/s.` without a thread count.

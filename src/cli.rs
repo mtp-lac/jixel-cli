@@ -57,14 +57,14 @@ pub struct Args {
 
     /// Encoder effort, 1 .. 10 (default 7). Higher = smaller output at the
     /// same quality. Mapped onto jixel's three speed tiers.
+    /// Rejected with --fast-lossless (that encoder has no effort control).
     #[arg(
         short,
         long,
         value_name = "EFFORT",
-        default_value_t = 7,
         value_parser = clap::value_parser!(u32).range(1..=10)
     )]
-    pub effort: u32,
+    pub effort: Option<u32>,
 
     /// 0 = decode JPEG input to pixels and reencode; 1 = losslessly transcode
     /// JPEG data (default 1 when the input is a JPEG).
@@ -87,9 +87,10 @@ pub struct Args {
     pub allow_jpeg_reconstruction: u32,
 
     /// 0 = use VarDCT mode, 1 = use Modular mode, 2 = heuristic "auto"
-    /// (jixel both-arms extension). Lossy only.
-    #[arg(short, long, value_name = "MODULAR", value_enum, default_value = "0")]
-    pub modular: ModularArg,
+    /// (jixel both-arms extension). Lossy only; default VarDCT.
+    /// Rejected with --fast-lossless.
+    #[arg(short, long, value_name = "MODULAR", value_enum)]
+    pub modular: Option<ModularArg>,
 
     /// More progressive/responsive decoding.
     #[arg(short, long)]
@@ -108,6 +109,7 @@ pub struct Args {
 
     /// Higher values improve decode speed at the expense of quality or
     /// density, 0 .. 4 (default 0). Lossless only.
+    /// Rejected with --fast-lossless.
     #[arg(
         long = "faster_decoding",
         value_name = "0..4",
@@ -118,13 +120,13 @@ pub struct Args {
 
     /// Number of worker threads (default -1).
     ///   -1 = machine default.  0 = do not use multithreading.
+    /// Rejected with --fast-lossless (that encoder is single-threaded).
     #[arg(
         long = "num_threads",
         value_name = "THREADS",
-        default_value_t = -1,
         value_parser = clap::value_parser!(i64).range(-1..)
     )]
-    pub num_threads: i64,
+    pub num_threads: Option<i64>,
 
     /// 0 = do not use the container format unless it is needed (jixel's only
     /// mode). 1 is rejected: jixel cannot force a container.
@@ -159,7 +161,9 @@ pub struct Args {
     #[arg(long)]
     pub lossless: bool,
 
-    /// jixel fast-lossless encoder (8/16-bit integer images only).
+    /// jixel fast-lossless encoder (8/16-bit integer images only). Accepts only
+    /// color metadata, --strip_alpha, --color-space, --icc-profile and
+    /// --orientation; other encoder options are rejected rather than ignored.
     #[arg(long)]
     pub fast_lossless: bool,
 
@@ -204,9 +208,30 @@ impl From<ModularArg> for LossyModular {
 }
 
 impl Args {
+    /// cjxl's `--effort` default is 7 (jixel `Speed::Fast`).
+    pub fn effort(&self) -> u32 {
+        self.effort.unwrap_or(7)
+    }
+
+    /// cjxl's `-m` default is "encoder chooses"; jixel's lossy default is VarDCT.
+    pub fn modular(&self) -> ModularArg {
+        self.modular.unwrap_or(ModularArg::Vardct)
+    }
+
+    /// cjxl `--num_threads`: -1 = machine default, 0 = no multithreading.
+    pub fn thread_count(&self) -> usize {
+        match self.num_threads.unwrap_or(-1) {
+            -1 => std::thread::available_parallelism()
+                .map(|n| n.get())
+                .unwrap_or(1),
+            0 => 1,
+            n => n as usize,
+        }
+    }
+
     /// Resolve the cjxl effort range onto jixel's three speed tiers.
     pub fn speed(&self) -> Speed {
-        match self.effort {
+        match self.effort() {
             1..=3 => Speed::Fastest,
             4..=8 => Speed::Fast,
             _ => Speed::Slow,

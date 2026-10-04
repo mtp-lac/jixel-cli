@@ -103,6 +103,17 @@ const CASES: &[Case] = &[
         jxl: "test-output/jpeg-pixels-lossless.jxl",
         expect: Expect::Exact,
     },
+    // f32 lossless (jixel encode_f32_lossless_rgba): IEEE-754 bit-exact
+    Case {
+        src: "test-images/rgbf.exr",
+        jxl: "test-output/rgbf-lossless.jxl",
+        expect: Expect::Exact,
+    },
+    Case {
+        src: "test-images/rgbaf.exr",
+        jxl: "test-output/rgbaf-lossless.jxl",
+        expect: Expect::Exact,
+    },
     // ---- lossy: must decode with acceptable fidelity ----
     Case {
         src: "test-images/rgb.png",
@@ -197,6 +208,11 @@ const CASES: &[Case] = &[
     Case {
         src: "test-images/rgbf.exr",
         jxl: "test-output/rgbf-exr.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgbaf.exr",
+        jxl: "test-output/rgbaf-lossy.jxl",
         expect: Expect::Report,
     },
     // ---- JPEG paths ----

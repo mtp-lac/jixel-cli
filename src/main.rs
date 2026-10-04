@@ -59,6 +59,33 @@ fn resolve_coding(args: &Args, file_bytes: &[u8]) -> Result<Coding> {
         );
     }
 
+    // jixel's fast-lossless encoder takes only color metadata + an alpha flag
+    // (`encode_fast_lossless`/`encode_fast_lossless_u16`): it has no distance,
+    // effort, progressive, patches, decoding-speed, tone-mapping or thread
+    // controls. Reject those combinations instead of silently dropping them.
+    if args.fast_lossless {
+        if args.distance.is_some() || args.quality.is_some() || args.lossless {
+            bail!("--fast-lossless cannot be combined with --distance, --quality or --lossless.");
+        }
+        for (is_set, flag) in [
+            (args.progressive, "--progressive"),
+            (args.splines, "--splines"),
+            (args.patches.is_some(), "--patches"),
+            (args.faster_decoding != 0, "--faster_decoding"),
+            (args.intensity_target > 0.0, "--intensity_target"),
+            (args.effort.is_some(), "--effort"),
+            (args.modular.is_some(), "--modular"),
+            (args.num_threads.is_some(), "--num_threads"),
+        ] {
+            if is_set {
+                bail!(
+                    "{flag} is not supported with --fast-lossless: jixel's fast-lossless \
+                     encoder accepts only color metadata and an alpha channel."
+                );
+            }
+        }
+    }
+
     let is_jpeg = file_bytes.starts_with(&[0xFF, 0xD8]);
     let is_gif = file_bytes.starts_with(b"GIF87a") || file_bytes.starts_with(b"GIF89a");
 
@@ -68,7 +95,7 @@ fn resolve_coding(args: &Args, file_bytes: &[u8]) -> Result<Coding> {
         lossless_jpeg = false;
     }
     if args.fast_lossless && is_jpeg && !args.lossless_jpeg.is_some_and(|v| v == 0) {
-        bail!("--fast_lossless does not apply to JPEG transcoding; pass --lossless_jpeg=0.");
+        bail!("--fast-lossless does not apply to JPEG transcoding; pass --lossless_jpeg=0.");
     }
 
     // cjxl SetDistanceFromFlags, with quality == 100 mapped to 0.0 (lossless).
@@ -110,16 +137,6 @@ fn output_path(args: &Args) -> PathBuf {
     })
 }
 
-fn thread_count(args: &Args) -> usize {
-    match args.num_threads {
-        -1 => std::thread::available_parallelism()
-            .map(|n| n.get())
-            .unwrap_or(1),
-        0 => 1,
-        n => n as usize,
-    }
-}
-
 fn run(args: &Args) -> Result<()> {
     let start = Instant::now();
 
@@ -143,18 +160,18 @@ fn run(args: &Args) -> Result<()> {
         if !args.quiet {
             eprintln!(
                 "Encoding [JPEG, lossless transcode, effort: {}]",
-                args.effort
+                args.effort()
             );
         }
         let tcfg = JpegTranscodeConfig::default()
             .with_jpeg_reconstruction(args.allow_jpeg_reconstruction == 1)
-            .with_num_threads(thread_count(args));
+            .with_num_threads(args.thread_count());
         let jxl_bytes = encode_jpeg_lossless_with_config(&file_bytes, &tcfg)
             .context("JPEG transcode failed")?;
         std::fs::write(&out_path, &jxl_bytes)
             .with_context(|| format!("Could not write jxl file: {}", out_path.display()))?;
         if !args.quiet {
-            print_compressed(&jxl_bytes, 0, start.elapsed(), args);
+            print_compressed(&jxl_bytes, 0, start.elapsed(), Some(args.thread_count()));
         }
         return Ok(());
     }
@@ -183,13 +200,14 @@ fn run(args: &Args) -> Result<()> {
 
     let jxl_bytes = if args.fast_lossless {
         if !args.quiet {
-            eprintln!("Encoding [Modular, lossless, effort: {}]", args.effort);
+            // No effort/thread knobs exist on this encoder; do not imply any.
+            eprintln!("Encoding [Modular, lossless, fast-lossless]");
         }
         let meta = fl_meta(args)?;
         encode_fast_lossless_dynamic(&img, strip, &meta)
             .with_context(|| format!("Fast-lossless encode failed: {}", args.input.display()))?
     } else {
-        let mode = match (coding.lossless, args.modular) {
+        let mode = match (coding.lossless, args.modular()) {
             (true, _) => "Modular",
             (false, ModularArg::Modular) => "Modular",
             _ => "VarDCT",
@@ -200,10 +218,10 @@ fn run(args: &Args) -> Result<()> {
             } else {
                 format!("d{:.3}", coding.distance)
             };
-            eprintln!("Encoding [{mode}, {dist}, effort: {}]", args.effort);
+            eprintln!("Encoding [{mode}, {dist}, effort: {}]", args.effort());
         }
-        if (args.splines || matches!(args.modular, ModularArg::Auto | ModularArg::Modular))
-            && args.effort < 9
+        if (args.splines || matches!(args.modular(), ModularArg::Auto | ModularArg::Modular))
+            && args.effort() < 9
             && !args.lossless
             && !args.quiet
         {
@@ -218,7 +236,12 @@ fn run(args: &Args) -> Result<()> {
         .with_context(|| format!("Could not write jxl file: {}", out_path.display()))?;
 
     if !args.quiet {
-        print_compressed(&jxl_bytes, pixels, start.elapsed(), args);
+        let threads = if args.fast_lossless {
+            None
+        } else {
+            Some(args.thread_count())
+        };
+        print_compressed(&jxl_bytes, pixels, start.elapsed(), threads);
     }
     Ok(())
 }
@@ -235,7 +258,7 @@ fn encode_config(args: &Args, coding: &Coding) -> Result<EncodeConfig> {
     if !coding.lossless {
         config = config
             .with_distance(coding.distance)
-            .with_lossy_modular(args.modular.into());
+            .with_lossy_modular(args.modular().into());
     }
     if let Some(path) = &args.icc_profile {
         let profile = std::fs::read(path)
@@ -249,7 +272,7 @@ fn encode_config(args: &Args, coding: &Coding) -> Result<EncodeConfig> {
     if args.intensity_target > 0.0 {
         config = config.with_intensity_target(args.intensity_target);
     }
-    Ok(config.with_num_threads(thread_count(args)))
+    Ok(config.with_num_threads(args.thread_count()))
 }
 
 /// Standard encoder path (VarDCT lossy / modular lossless) for all pixel formats.
@@ -316,12 +339,12 @@ fn encode_image_dynamic(
                 jixel::encode_image_with_alpha_16bit(buf.as_raw(), width, height, config)?
             }
         }
+        // jixel encodes f32 losslessly (finite, non-negative samples only) via
+        // encode_f32_lossless_rgba; the guard lives in the library.
         DynamicImage::ImageRgb32F(buf) => {
-            reject_lossless(config)?;
             jixel::encode_image_f32(buf.as_raw(), width, height, config)?
         }
         DynamicImage::ImageRgba32F(buf) => {
-            reject_lossless(config)?;
             if strip_alpha {
                 let rgb = drop_alpha(buf.as_raw());
                 jixel::encode_image_f32(&rgb, width, height, config)?
@@ -509,17 +532,6 @@ fn alpha_is_opaque(img: &DynamicImage) -> bool {
     }
 }
 
-/// The float entry points are lossy-only.
-fn reject_lossless(config: &EncodeConfig) -> Result<()> {
-    if config.lossless {
-        bail!(
-            "lossless is not supported for float images; convert to an integer pixel \
-             format (cjxl --lossless equivalent is unavailable here)"
-        );
-    }
-    Ok(())
-}
-
 /// Drop the 4th channel from interleaved RGBA samples (u8/u16/f32).
 fn drop_alpha<T: Copy>(input: &[T]) -> Vec<T> {
     input
@@ -530,8 +542,15 @@ fn drop_alpha<T: Copy>(input: &[T]) -> Vec<T> {
         .collect()
 }
 
-/// cjxl-style summary line. `pixels == 0` skips the bpp/speed stats (transcode).
-fn print_compressed(bytes: &[u8], pixels: usize, elapsed: std::time::Duration, args: &Args) {
+/// cjxl-style summary line. `pixels == 0` skips the bpp/speed stats (transcode);
+/// `threads == None` omits the thread line (the fast-lossless encoder is
+/// single-threaded, so reporting a worker count would be misleading).
+fn print_compressed(
+    bytes: &[u8],
+    pixels: usize,
+    elapsed: std::time::Duration,
+    threads: Option<usize>,
+) {
     if bytes.len() < 100000 {
         eprint!("Compressed to {} bytes ", bytes.len());
     } else {
@@ -541,10 +560,10 @@ fn print_compressed(bytes: &[u8], pixels: usize, elapsed: std::time::Duration, a
         let bpp = bytes.len() as f64 * 8.0 / pixels as f64;
         eprintln!("({bpp:.3} bpp).");
         let mps = pixels as f64 / elapsed.as_secs_f64().max(1e-6) * 1e-6;
-        eprintln!(
-            "Using {} threads, average speed: {mps:.1} MP/s.",
-            thread_count(args)
-        );
+        match threads {
+            Some(n) => eprintln!("Using {n} threads, average speed: {mps:.1} MP/s."),
+            None => eprintln!("Average speed: {mps:.1} MP/s."),
+        }
     } else {
         eprintln!();
     }
