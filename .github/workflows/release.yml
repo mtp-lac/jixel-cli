@@ -5,11 +5,6 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to release (e.g., v0.1.0)'
-        required: true
-        default: 'v0.1.0'
 
 env:
   CARGO_TERM_COLOR: always
@@ -17,79 +12,94 @@ env:
 jobs:
   build:
     runs-on: windows-latest
+    outputs:
+      jixel_version: ${{ steps.jixel.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      
+
+      - name: Extract jixel version
+        id: jixel
+        run: |
+          JXEL_VERSION=$(grep -oP 'jixel\s*=\s*\{[^}]*version\s*=\s*"\K[^"]+' Cargo.toml | head -1)
+          echo "version=$JXEL_VERSION" >> $GITHUB_OUTPUT
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
-          
+
       - name: Build release
         run: cargo build --release
-        
+
       - name: Run tests
         run: |
           cargo run --release --example gen16
           cargo run --release --example verify
         continue-on-error: true
-        
+
       - name: Package executable
         run: |
           $exe = "target\release\jixel-cli.exe"
-          $zip = "jixel-cli-windows-x86_64.zip"
+          $zip = "jixel-cli-jxl-${{ steps.jixel.outputs.version }}-windows-x86_64.zip"
           Compress-Archive -Path $exe -DestinationPath $zip
           Write-Host "Created $zip"
-          
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: jixel-cli-windows
-          path: jixel-cli-windows-x86_64.zip
-          
+          path: jixel-cli-jxl-*.zip
+
   release:
     needs: build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
           name: jixel-cli-windows
           path: ./release
-          
+
       - name: Generate changelog
         id: changelog
         run: |
-          # Get the version from tag or input
           TAG="${{ github.ref_name }}"
-          if [ -z "$TAG" ]; then
-            TAG="${{ github.event.inputs.tag }}"
-          fi
-          
-          # Generate changelog comparing with previous tag
-          PREV_TAG=$(git describe --tags --abbrev=0 ${TAG}^ 2>/dev/null || echo "")
-          
-          if [ -n "$PREV_TAG" ]; then
-            CHANGELOG=$(git log ${PREV_TAG}..${TAG} --pretty=format:"- %s" | sed "s/^${PREV_TAG}^//" | sed "s/^${TAG}//")
+          # When triggered by tag push, compare against the previous tag.
+          if [ -n "$TAG" ]; then
+            PREV_TAG=$(git describe --tags --abbrev=0 ${TAG}^ 2>/dev/null || echo "")
+            if [ -n "$PREV_TAG" ]; then
+              CHANGELOG=$(git log ${PREV_TAG}..${TAG} --pretty=format:"- %s")
+            else
+              CHANGELOG=$(git log --pretty=format:"- %s")
+            fi
           else
-            CHANGELOG=$(git log --pretty=format:"- %s" ${TAG} 2>/dev/null || echo "Initial release")
+            CHANGELOG=$(git log --pretty=format:"- %s" -n 20)
           fi
-          
+
+          # Default to HEAD version for manual dispatch.
+          JXEL_VERSION="${{ needs.build.outputs.jixel_version }}"
+          echo "version=$JXEL_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v${JXEL_VERSION}" >> $GITHUB_OUTPUT
           echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
           echo "$CHANGELOG" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
-          
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          body: ${{ steps.changelog.outputs.CHANGELOG }}
-          files: ./release/jixel-cli-windows-x86_64.zip
+          tag_name: ${{ steps.changelog.outputs.tag }}
+          name: jixel-cli ${{ steps.changelog.outputs.version }}
+          body: |
+            ## jixel-cli — jxl ${{ steps.changelog.outputs.version }}
+
+            CLI wrapper for the **jixel** JPEG XL encoder, built against
+            jixel **${{ steps.changelog.outputs.version }}**.
+
+            ### Changes
+            ${{ steps.changelog.outputs.CHANGELOG }}
+          files: ./release/*.zip
           draft: false
           prerelease: false
         env:
