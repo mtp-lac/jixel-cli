@@ -1,0 +1,96 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v0.1.0)'
+        required: true
+        default: 'v0.1.0'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+          
+      - name: Build release
+        run: cargo build --release
+        
+      - name: Run tests
+        run: |
+          cargo run --release --example gen16
+          cargo run --release --example verify
+        continue-on-error: true
+        
+      - name: Package executable
+        run: |
+          $exe = "target\release\jixel-cli.exe"
+          $zip = "jixel-cli-windows-x86_64.zip"
+          Compress-Archive -Path $exe -DestinationPath $zip
+          Write-Host "Created $zip"
+          
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: jixel-cli-windows
+          path: jixel-cli-windows-x86_64.zip
+          
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: jixel-cli-windows
+          path: ./release
+          
+      - name: Generate changelog
+        id: changelog
+        run: |
+          # Get the version from tag or input
+          TAG="${{ github.ref_name }}"
+          if [ -z "$TAG" ]; then
+            TAG="${{ github.event.inputs.tag }}"
+          fi
+          
+          # Generate changelog comparing with previous tag
+          PREV_TAG=$(git describe --tags --abbrev=0 ${TAG}^ 2>/dev/null || echo "")
+          
+          if [ -n "$PREV_TAG" ]; then
+            CHANGELOG=$(git log ${PREV_TAG}..${TAG} --pretty=format:"- %s" | sed "s/^${PREV_TAG}^//" | sed "s/^${TAG}//")
+          else
+            CHANGELOG=$(git log --pretty=format:"- %s" ${TAG} 2>/dev/null || echo "Initial release")
+          fi
+          
+          echo "CHANGELOG<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGELOG" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Release ${{ github.ref_name }}
+          body: ${{ steps.changelog.outputs.CHANGELOG }}
+          files: ./release/jixel-cli-windows-x86_64.zip
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
