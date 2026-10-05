@@ -2,7 +2,7 @@
 
 Review of `jixel-cli` against **libjxl's `cjxl`** (main branch,
 `tools/cjxl_main.cc`), 2026-09. Goal: same invocation syntax and flag
-semantics for everything the jixel 0.3 public API can express. jixel-only
+semantics for everything the jixel 0.3.4 public API can express. jixel-only
 extensions are listed separately; flags jixel cannot implement are *not*
 silently accepted.
 
@@ -53,15 +53,32 @@ jixel-cli exposes dedicated flags instead. The cjxl `-x` shorthand names
 `display-p3`, `bt2020-pq`, `bt2020-hlg`; **`Adobe98`/`ProPhoto` have no jixel
 preset** and are rejected.
 
+## cjxl flags with a jixel API this CLI does not yet expose
+
+These have an upstream counterpart but no jixel-cli switch yet. They are not
+accepted, and `--dots` etc. are not silently ignored either - an unknown flag
+still exits 1.
+
+| cjxl flag | jixel API | Notes |
+|-----------|-----------|-------|
+| `--dots <0\|1>` | `EncodeConfig::dots` / `with_dots` (new in 0.3.4) | Bright/dark spot coding. Needs the `splines` Cargo feature (enabled here), Slow speed + default decoding speed only |
+| `--progressive_ac`, `--qprogressive_ac`, `--progressive_dc` | `progressive_passes: Option<u32>`, `progressive_shifts: Option<Vec<u32>>` | jixel takes a pass count or an explicit per-pass coefficient-shift schedule; cjxl's three AC/DC shift knobs are a coarser projection onto it |
+| `--compress_boxes`, `--brotli_effort` | `brotli_compression: Option<Arc<dyn BrotliCompression>>` | jixel's hook is for Brotli-compressing EXIF/XMP (`brob`) boxes with a caller-provided compressor; cjxl's effort number and general box policy have no direct equivalent |
+| `--min_nits`, `--relative_to_max_display`, `--linear_below` | `min_nits`, `relative_to_max_display`, `linear_below` | Tone-mapping fields exist; only `--intensity_target` is exposed |
+| gain-map embedding | `gain_map: Option<GainMap>`, `GainMapFloats`, `IsoGainMap` | Encodes a second codestream plus ISO 21496-1 metadata in a `jhgm` box; forces the container form. cjxl has no such flag either |
+| EXIF / XMP embedding | `exif: Option<Vec<u8>>`, `xmp: Option<Vec<u8>>` | Raw TIFF / XMP bytes in `Exif` / `xml ` / `brob` boxes; forces the container form |
+
+Also new in 0.3.4: `EncodeConfig::learned_rate` (default `true`, takes effect
+at `Speed::Slow` only) toggles learned rate pricing - a jixel-only encoder
+behaviour with no cjxl counterpart.
+
 ## cjxl flags deliberately absent (no jixel API)
 
 `-a/--alpha_distance`, `--group_order`, `--center_x/--center_y`,
-`--compress_boxes`, `--brotli_effort`, `--dec-hints (-x)`,
-`--photon_noise_iso`, `--min_nits`/tone-mapping fields,
-`--resampling/--ec_resampling`, `--epf`, `--gaborish`, `--noise`, `--dots`,
+`--dec-hints (-x)`, `--photon_noise_iso`,
+`--resampling/--ec_resampling`, `--epf`, `--gaborish`, `--noise`,
 `--keep_invisible`, `--premultiply`, `--override_bitdepth`,
-`--upsampling_mode`, `--already_downsampled`, `--progressive_ac`,
-`--qprogressive_ac`, `--progressive_dc`, `--responsive (-R)`,
+`--upsampling_mode`, `--already_downsampled`, `--responsive (-R)`,
 all modular tuning (`-I`, `-C`, `-g`, `-P`, `-E`, `-X`, `-Y`,
 `--modular_palette_colors`, `--modular_lossy_palette`),
 `--codestream_level`, `--buffering`, `--output_mode`, `--streaming_input/output`,

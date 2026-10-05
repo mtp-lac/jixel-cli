@@ -64,6 +64,44 @@ pixels, a color space, an alpha flag and `FlMeta`. It therefore **rejects**
 ignoring them; `--strip_alpha`, `--color-space`, `--icc-profile` and
 `--orientation` do apply.
 
+## What's new in jixel 0.3.4
+
+This project tracks upstream `awxkee/jixel` and ships it unmodified, so the
+encoder work from upstream PRs #142-#145 comes along with the dependency bump
+(jixel-cli upgraded `0.3.2` -> `0.3.4`).
+
+**Already active - no flag needed:**
+
+- **Learned rate pricing.** VarDCT transforms are chosen by what each candidate
+  costs under the image's own coefficient statistics instead of a fixed rate
+  model. Patterned and synthetic content compresses much better; photographs are
+  about unchanged. On by default; it takes effect at effort 9-10
+  (jixel `Speed::Slow`), where it costs encode time. Upstream toggle:
+  `EncodeConfig::learned_rate`.
+- **DC smoothing and DC coding.** New rate modelling on the lossy encoder's DC
+  path; applies to every lossy encode.
+- **Splines and patches fixes.** Thin curvilinear structures (wires, veins,
+  ink lines) and repeated content now take the corrected code paths, so the
+  existing `--splines` and `--patches` flags benefit directly.
+
+**New API, not yet a jixel-cli flag:**
+
+- `--dots` (cjxl spelling) - jixel 0.3.4 adds `EncodeConfig::dots` /
+  `with_dots(bool)`: isolated bright or dark spots are coded as signed Gaussian
+  dots from a small template atlas next to the lossy VarDCT frame, each passing
+  a rate-distortion test. It requires the `splines` Cargo feature, which this
+  build already enables, so the capability is compiled in - it just has no CLI
+  switch yet.
+
+Upstream knobs that still have no jixel-cli flag: `dots`, `learned_rate`,
+`progressive_passes` / `progressive_shifts` (cjxl's `--progressive_ac`,
+`--qprogressive_ac`, `--progressive_dc`), `gain_map` (HDR gain map in a `jhgm`
+box), `exif` / `xmp` (metadata boxes), `brotli_compression` (Brotli-compressed
+`brob` boxes), and the remaining tone-mapping fields `min_nits`,
+`relative_to_max_display`, `linear_below`. See
+[docs/cjxl-alignment.md](<docs/cjxl-alignment.md>) for the full cjxl
+comparison.
+
 ## Supported inputs
 
 PNG, JPEG, GIF, BMP, TIFF, WebP, EXR, HDR… (anything the `image` crate
