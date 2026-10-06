@@ -17,9 +17,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Test images for 32-bit float RGBA encoding
 - Verification cases for 32-bit float lossless round-tripping
 - GitHub Actions release workflow for automated builds and releases
+- `--dots <0|1>` flag (cjxl convention) exposing jixel 0.3.4's bright/dark dot
+  coding via `EncodeConfig::dots`
+- `--learned-rate <0|1>` jixel-only flag exposing `EncodeConfig::learned_rate`
+  (learned rate pricing, default on)
 - Documentation of the upstream jixel 0.3.4 encoder changes (dots coding,
   learned rate pricing, DC smoothing, splines/patches fixes) and of the
-  upstream knobs that are not yet exposed as CLI flags
+  upstream knobs that still have no CLI flag
 
 ### Fixed
 - Stricter parameter validation for `--fast-lossless` encoder (rejects incompatible flags instead of silently ignoring)

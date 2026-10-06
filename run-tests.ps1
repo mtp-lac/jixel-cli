@@ -46,6 +46,9 @@ Run-Case "lossy-q85"         @($img, "$dir\lossy-q85.jxl", "-q", "85")
 Run-Case "lossy-e2"          @($img, "$dir\lossy-e2.jxl", "-e", "2")
 Run-Case "slow-e9"           @($img, "$dir\slow-e9.jxl", "-e", "9")
 Run-Case "splines-e9"        @($img, "$dir\splines-e9.jxl", "-e", "9", "--splines")
+Run-Case "dots-e9"           @($img, "$dir\dots-e9.jxl", "-e", "9", "--dots", "1")
+Run-Case "dots-off"          @($img, "$dir\dots-off.jxl", "-e", "9", "--dots", "0")
+Run-Case "learned-rate-off"  @($img, "$dir\learned-rate-off.jxl", "-e", "9", "--learned-rate", "0")
 Run-Case "modular-lossy"     @($img, "$dir\modular-lossy.jxl", "-e", "9", "-m", "1")
 Run-Case "modular-auto"      @($img, "$dir\modular-auto.jxl", "-e", "9", "-m", "2")
 Run-Case "progressive"       @($img, "$dir\progressive.jxl", "-p")
@@ -114,6 +117,7 @@ Run-Case "err-fl-effort"     @($img, "$dir\neg15.jxl", "--fast-lossless", "-e", 
 Run-Case "err-fl-modular"    @($img, "$dir\neg16.jxl", "--fast-lossless", "-m", "1") -Fail
 Run-Case "err-fl-threads"    @($img, "$dir\neg17.jxl", "--fast-lossless", "--num_threads", "4") -Fail
 Run-Case "err-fl-splines"    @($img, "$dir\neg18.jxl", "--fast-lossless", "--splines") -Fail
+Run-Case "err-fl-dots"       @($img, "$dir\neg19.jxl", "--fast-lossless", "--dots", "1") -Fail
 
 Write-Host ""
 Write-Host "Summary: $pass passed, $fail failed" -ForegroundColor $(if ($fail) { "Red" } else { "Green" })

@@ -36,6 +36,7 @@ jixel-cli  [OPTIONS] INPUT [OUTPUT]
 | `--num_threads <-1\|0\|N>` | -1 machine default, 0 no MT | ✓ (0 maps to jixel 1 thread) |
 | `--faster_decoding <0..4>` | decode-speed vs density | ✓ mapped to jixel's 3 levels: 0→Slow, 1–2→Fast, 3–4→Fastest (lossless only, same as jixel) |
 | `--patches <0\|1>` | encoder chooses default | ✓ default = enabled, auto-disabled with `--progressive` (cjxl rule) |
+| `--dots <0\|1>` | encoder chooses default (default: off) | ✓ maps to jixel 0.3.4 `EncodeConfig::dots`; `--dots=1` turns it on. Needs the `splines` Cargo feature (enabled here) and takes effect at effort 9-10 |
 | `--intensity_target <nits>` | 0 = auto | ✓ |
 | `--container <0\|1>` | 1 forces container | accepts `0`/unset only; `1` **errors**: jixel has no force-container API (metadata auto-switches to container exactly like cjxl's forced promotion) |
 | Exit codes | 0 ok/help/version, 1 parse/arg/run errors | ✓ (clap's default 2 is remapped to 1) |
@@ -44,8 +45,12 @@ jixel-cli  [OPTIONS] INPUT [OUTPUT]
 ## jixel-only extensions (no cjxl equivalent — not compared)
 
 `--lossless` (alias of `-d 0`), `--fast-lossless`, `--splines`,
-`--color-space <srgb\|srgb-linear\|display-p3\|bt2020-pq\|bt2020-hlg>`,
+`--learned-rate <0\|1>`, `--color-space <srgb\|srgb-linear\|display-p3\|bt2020-pq\|bt2020-hlg>`,
 `--icc-profile <FILE>`, `--orientation <1-8>`.
+
+`--learned-rate` is the switch for jixel's learned rate pricing (jixel 0.3.4
+`EncodeConfig::learned_rate`, default on, `Speed::Slow` only). cjxl has no such
+flag, so it is a jixel-only extension.
 
 Note: cjxl expresses color hints as `-x color_space=...` / `-x icc_pathname=...`;
 jixel-cli exposes dedicated flags instead. The cjxl `-x` shorthand names
@@ -56,21 +61,15 @@ preset** and are rejected.
 ## cjxl flags with a jixel API this CLI does not yet expose
 
 These have an upstream counterpart but no jixel-cli switch yet. They are not
-accepted, and `--dots` etc. are not silently ignored either - an unknown flag
-still exits 1.
+accepted, and an unknown flag is not silently ignored either - it exits 1.
 
 | cjxl flag | jixel API | Notes |
 |-----------|-----------|-------|
-| `--dots <0\|1>` | `EncodeConfig::dots` / `with_dots` (new in 0.3.4) | Bright/dark spot coding. Needs the `splines` Cargo feature (enabled here), Slow speed + default decoding speed only |
 | `--progressive_ac`, `--qprogressive_ac`, `--progressive_dc` | `progressive_passes: Option<u32>`, `progressive_shifts: Option<Vec<u32>>` | jixel takes a pass count or an explicit per-pass coefficient-shift schedule; cjxl's three AC/DC shift knobs are a coarser projection onto it |
 | `--compress_boxes`, `--brotli_effort` | `brotli_compression: Option<Arc<dyn BrotliCompression>>` | jixel's hook is for Brotli-compressing EXIF/XMP (`brob`) boxes with a caller-provided compressor; cjxl's effort number and general box policy have no direct equivalent |
 | `--min_nits`, `--relative_to_max_display`, `--linear_below` | `min_nits`, `relative_to_max_display`, `linear_below` | Tone-mapping fields exist; only `--intensity_target` is exposed |
 | gain-map embedding | `gain_map: Option<GainMap>`, `GainMapFloats`, `IsoGainMap` | Encodes a second codestream plus ISO 21496-1 metadata in a `jhgm` box; forces the container form. cjxl has no such flag either |
 | EXIF / XMP embedding | `exif: Option<Vec<u8>>`, `xmp: Option<Vec<u8>>` | Raw TIFF / XMP bytes in `Exif` / `xml ` / `brob` boxes; forces the container form |
-
-Also new in 0.3.4: `EncodeConfig::learned_rate` (default `true`, takes effect
-at `Speed::Slow` only) toggles learned rate pricing - a jixel-only encoder
-behaviour with no cjxl counterpart.
 
 ## cjxl flags deliberately absent (no jixel API)
 

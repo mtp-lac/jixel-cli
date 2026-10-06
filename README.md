@@ -43,6 +43,7 @@ jixel-cli.exe icon.png out.jxl --strip_alpha 2 --num_threads 4
 | `--faster_decoding <0..4>` | lossless decode-speed vs density |
 | `--num_threads <-1\|0\|N>` | -1 machine default, 0 = single-threaded |
 | `--patches <0\|1>` | patch dictionary (default: on, auto-off with `-p`) |
+| `--dots <0\|1>` | bright/dark spot coding (default: off; takes effect at effort 9-10) |
 | `--intensity_target <nits>` | HDR peak luminance hint |
 | `--container <0\|1>` | `0`/unset ok; `1` rejected (jixel cannot force containers) |
 | `--quiet`, `-v/--verbose`, `-V/--version`, `-h/--help` | as in cjxl |
@@ -54,8 +55,11 @@ mirror cjxl.
 ## jixel-only extensions
 
 `--lossless` (alias `-d 0`), `--fast-lossless`, `--splines`,
-`--color-space <srgb\|srgb-linear\|display-p3\|bt2020-pq\|bt2020-hlg>`,
+`--learned-rate <0\|1>`, `--color-space <srgb\|srgb-linear\|display-p3\|bt2020-pq\|bt2020-hlg>`,
 `--icc-profile <FILE>`, `--orientation <1-8>`.
+
+`--learned-rate` is the switch for jixel's learned rate pricing (default on;
+pass `0` to disable). It has no cjxl counterpart.
 
 `--fast-lossless` selects jixel's dedicated fast encoder, whose API takes only
 pixels, a color space, an alpha flag and `FlMeta`. It therefore **rejects**
@@ -70,37 +74,38 @@ This project tracks upstream `awxkee/jixel` and ships it unmodified, so the
 encoder work from upstream PRs #142-#145 comes along with the dependency bump
 (jixel-cli upgraded `0.3.2` -> `0.3.4`).
 
-**Already active - no flag needed:**
+**Now exposed as flags (follow libjxl's cjxl conventions):**
+
+- **`--dots <0|1>`** - cjxl spelling and semantics ("Disable/enable dots
+  generation. 0 = disable. 1 = enable. Default = encoder chooses"). jixel 0.3.4
+  added `EncodeConfig::dots` / `with_dots(bool)`: isolated bright or dark spots
+  are coded as signed Gaussian dots from a small template atlas next to the
+  lossy VarDCT frame, each passing a rate-distortion test. Requires the
+  `splines` Cargo feature (enabled here), Slow speed and the default decoding
+  speed.
+- **`--learned-rate <0|1>`** - jixel-only extension (no cjxl counterpart) for
+  the learned rate pricing switch; default on, pass `0` to disable.
+
+**Already active by default (no flag needed):**
 
 - **Learned rate pricing.** VarDCT transforms are chosen by what each candidate
   costs under the image's own coefficient statistics instead of a fixed rate
   model. Patterned and synthetic content compresses much better; photographs are
   about unchanged. On by default; it takes effect at effort 9-10
-  (jixel `Speed::Slow`), where it costs encode time. Upstream toggle:
-  `EncodeConfig::learned_rate`.
+  (jixel `Speed::Slow`), where it costs encode time. Switch: `--learned-rate`.
 - **DC smoothing and DC coding.** New rate modelling on the lossy encoder's DC
   path; applies to every lossy encode.
 - **Splines and patches fixes.** Thin curvilinear structures (wires, veins,
   ink lines) and repeated content now take the corrected code paths, so the
   existing `--splines` and `--patches` flags benefit directly.
 
-**New API, not yet a jixel-cli flag:**
-
-- `--dots` (cjxl spelling) - jixel 0.3.4 adds `EncodeConfig::dots` /
-  `with_dots(bool)`: isolated bright or dark spots are coded as signed Gaussian
-  dots from a small template atlas next to the lossy VarDCT frame, each passing
-  a rate-distortion test. It requires the `splines` Cargo feature, which this
-  build already enables, so the capability is compiled in - it just has no CLI
-  switch yet.
-
-Upstream knobs that still have no jixel-cli flag: `dots`, `learned_rate`,
-`progressive_passes` / `progressive_shifts` (cjxl's `--progressive_ac`,
-`--qprogressive_ac`, `--progressive_dc`), `gain_map` (HDR gain map in a `jhgm`
-box), `exif` / `xmp` (metadata boxes), `brotli_compression` (Brotli-compressed
-`brob` boxes), and the remaining tone-mapping fields `min_nits`,
-`relative_to_max_display`, `linear_below`. See
-[docs/cjxl-alignment.md](<docs/cjxl-alignment.md>) for the full cjxl
-comparison.
+Upstream knobs that still have no jixel-cli flag: `progressive_passes` /
+`progressive_shifts` (cjxl's `--progressive_ac`, `--qprogressive_ac`,
+`--progressive_dc`), `gain_map` (HDR gain map in a `jhgm` box), `exif` / `xmp`
+(metadata boxes), `brotli_compression` (Brotli-compressed `brob` boxes), and the
+remaining tone-mapping fields `min_nits`, `relative_to_max_display`,
+`linear_below`. See [docs/cjxl-alignment.md](<docs/cjxl-alignment.md>) for the
+full cjxl comparison.
 
 ## Supported inputs
 

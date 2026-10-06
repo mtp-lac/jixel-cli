@@ -138,6 +138,12 @@ pub struct Args {
     #[arg(long, value_name = "0|1", value_parser = clap::value_parser!(u32).range(0..=1))]
     pub patches: Option<u32>,
 
+    /// 0 = disable dots, 1 = enable. Default = encoder chooses
+    /// (jixel's default is disabled). Dots take effect at effort 9-10
+    /// (jixel `Speed::Slow`) and at the default decoding speed only.
+    #[arg(long, value_name = "0|1", value_parser = clap::value_parser!(u32).range(0..=1))]
+    pub dots: Option<u32>,
+
     /// Upper bound on the intensity level present in the image, in nits.
     /// 0 = choose a sensible value based on the color encoding (default).
     #[arg(
@@ -170,6 +176,13 @@ pub struct Args {
     /// Enable experimental spline detection (jixel; needs effort >= 9).
     #[arg(long)]
     pub splines: bool,
+
+    /// Learned rate pricing (jixel-only; default on).
+    /// 0 = disable, 1 = enable. Chooses VarDCT transforms by what each
+    /// candidate costs under the image's own coefficient statistics instead of
+    /// a fixed rate model. Takes effect at effort 9-10 (jixel `Speed::Slow`).
+    #[arg(long, value_name = "0|1", default_value_t = 1, value_parser = clap::value_parser!(u32).range(0..=1))]
+    pub learned_rate: u32,
 
     /// Color encoding written into the codestream (jixel presets).
     #[arg(long, value_enum, default_value = "srgb")]
@@ -245,6 +258,17 @@ impl Args {
             1..=2 => DecodingSpeed::Fast,
             _ => DecodingSpeed::Fastest,
         }
+    }
+
+    /// cjxl `--dots`: default = encoder chooses, which maps to jixel's off
+    /// (`dots` defaults to false). Explicit `--dots=1` turns it on.
+    pub fn dots_enabled(&self) -> bool {
+        self.dots.map(|d| d == 1).unwrap_or(false)
+    }
+
+    /// jixel-only `--learned-rate`: default on (jixel's default is `true`).
+    pub fn learned_rate_enabled(&self) -> bool {
+        self.learned_rate == 1
     }
 }
 

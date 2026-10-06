@@ -70,6 +70,7 @@ fn resolve_coding(args: &Args, file_bytes: &[u8]) -> Result<Coding> {
         for (is_set, flag) in [
             (args.progressive, "--progressive"),
             (args.splines, "--splines"),
+            (args.dots.is_some(), "--dots"),
             (args.patches.is_some(), "--patches"),
             (args.faster_decoding != 0, "--faster_decoding"),
             (args.intensity_target > 0.0, "--intensity_target"),
@@ -220,12 +221,14 @@ fn run(args: &Args) -> Result<()> {
             };
             eprintln!("Encoding [{mode}, {dist}, effort: {}]", args.effort());
         }
-        if (args.splines || matches!(args.modular(), ModularArg::Auto | ModularArg::Modular))
+        if (args.splines
+            || args.dots_enabled()
+            || matches!(args.modular(), ModularArg::Auto | ModularArg::Modular))
             && args.effort() < 9
             && !args.lossless
             && !args.quiet
         {
-            eprintln!("WARNING: splines and lossy modular arms take effect at effort 9 or 10.");
+            eprintln!("WARNING: splines, dots and lossy modular arms take effect at effort 9 or 10.");
         }
         let config = encode_config(args, &coding)?;
         encode_image_dynamic(&img, &config, strip)
@@ -254,6 +257,8 @@ fn encode_config(args: &Args, coding: &Coding) -> Result<EncodeConfig> {
         .with_progressive(args.progressive)
         .with_patches(args.patches.map(|p| p == 1).unwrap_or(!args.progressive))
         .with_splines(args.splines)
+        .with_dots(args.dots_enabled())
+        .with_learned_rate(args.learned_rate_enabled())
         .with_color_encoding(args.color_space.to_color_encoding());
     if !coding.lossless {
         config = config
