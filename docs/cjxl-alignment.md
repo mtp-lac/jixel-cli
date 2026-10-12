@@ -52,6 +52,21 @@ jixel-cli  [OPTIONS] INPUT [OUTPUT]
 `EncodeConfig::learned_rate`, default on, `Speed::Slow` only). cjxl has no such
 flag, so it is a jixel-only extension.
 
+`--exif <FILE>` and `--xmp <FILE>` embed raw EXIF/TIFF and XMP payloads in
+`Exif` / `xml ` container boxes (jixel 0.4 `EncodeConfig::with_exif` /
+`with_xmp`). Both force the container form, matching cjxl's behaviour when
+metadata is present.
+
+`--gain-map <FILE>` attaches an HDR gain map (jixel 0.4 `GainMap`, `IsoGainMap`,
+`GainMapFloats`). The gain map image is loaded like the primary input, encoded
+as its own JPEG XL codestream, and shipped in a `jhgm` container box with
+ISO 21496-1 metadata. Requires the primary input to be encoded via the pixel
+path (not JPEG lossless transcode, not `--fast-lossless`). Companion flags
+`--gain-map-alternate-color-space`, `--gain-map-alternate-icc-profile`,
+`--gain-map-min`, `--gain-map-max`, `--base-hdr-headroom`,
+`--alternate-hdr-headroom` and `--gain-map-lossless` tune the gain map's
+metadata and encoding. cjxl has no such flag.
+
 Note: cjxl expresses color hints as `-x color_space=...` / `-x icc_pathname=...`;
 jixel-cli exposes dedicated flags instead. The cjxl `-x` shorthand names
 (`sRGB`, `DisplayP3`, `Rec2100PQ`, `Rec2100HLG`) correspond to `srgb`,
@@ -68,8 +83,7 @@ accepted, and an unknown flag is not silently ignored either - it exits 1.
 | `--progressive_ac`, `--qprogressive_ac`, `--progressive_dc` | `progressive_passes: Option<u32>`, `progressive_shifts: Option<Vec<u32>>` | jixel takes a pass count or an explicit per-pass coefficient-shift schedule; cjxl's three AC/DC shift knobs are a coarser projection onto it |
 | `--compress_boxes`, `--brotli_effort` | `brotli_compression: Option<Arc<dyn BrotliCompression>>` | jixel's hook is for Brotli-compressing EXIF/XMP (`brob`) boxes with a caller-provided compressor; cjxl's effort number and general box policy have no direct equivalent |
 | `--min_nits`, `--relative_to_max_display`, `--linear_below` | `min_nits`, `relative_to_max_display`, `linear_below` | Tone-mapping fields exist; only `--intensity_target` is exposed |
-| gain-map embedding | `gain_map: Option<GainMap>`, `GainMapFloats`, `IsoGainMap` | Encodes a second codestream plus ISO 21496-1 metadata in a `jhgm` box; forces the container form. cjxl has no such flag either |
-| EXIF / XMP embedding | `exif: Option<Vec<u8>>`, `xmp: Option<Vec<u8>>` | Raw TIFF / XMP bytes in `Exif` / `xml ` / `brob` boxes; forces the container form |
+| EXIF / XMP embedding | `exif: Option<Vec<u8>>`, `xmp: Option<Vec<u8>>` | Raw TIFF / XMP bytes in `Exif` / `xml ` boxes; forces the container form. (cjxl has no dedicated flag either; jixel-cli exposes `--exif` and `--xmp`.) |
 
 ## cjxl flags deliberately absent (no jixel API)
 
@@ -121,6 +135,7 @@ accepting a flag it would silently drop:
 |---|---|
 | `--fast-lossless` + `-d` / `-q` / `--lossless` | error (redundant or contradictory) |
 | `--fast-lossless` + `-e`, `-m`, `-p`, `--patches`, `--faster_decoding`, `--intensity_target`, `--num_threads`, `--splines` | error: no such control on this encoder |
+| `--fast-lossless` + `--exif`, `--xmp`, `--gain-map` | error: no such control on this encoder |
 | `--fast-lossless` + `--strip_alpha`, `--color-space`, `--icc-profile`, `--orientation` | supported (these map onto `FlMeta`) |
 
 Because that encoder is single-threaded, its summary line prints

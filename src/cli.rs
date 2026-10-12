@@ -195,6 +195,55 @@ pub struct Args {
     /// EXIF orientation value (1-8) to signal for display.
     #[arg(long, value_parser = clap::value_parser!(u8).range(1..=8))]
     pub orientation: Option<u8>,
+
+    /// Embed EXIF/TIFF metadata from file (forces the container form).
+    #[arg(long, value_name = "EXIF_FILE")]
+    pub exif: Option<PathBuf>,
+
+    /// Embed an XMP packet from file (forces the container form).
+    #[arg(long, value_name = "XMP_FILE")]
+    pub xmp: Option<PathBuf>,
+
+    /// Attach an HDR gain map to the image. The FILE must contain the gain
+    /// map image data (PNG/RGB/etc, decoded by the `image` crate).
+    #[arg(long, value_name = "FILE")]
+    pub gain_map: Option<PathBuf>,
+
+    /// Alternate (HDR) color space for the gain map's alternate rendition.
+    /// Requires --gain-map. Defaults to the primary --color-space.
+    #[arg(long, value_enum, value_name = "COLOR")]
+    pub gain_map_alternate_color_space: Option<ColorSpaceArg>,
+
+    /// Alternate (HDR) ICC profile for the gain map's alternate rendition.
+    /// Requires --gain-map.
+    #[arg(long = "gain_map_alternate_icc_profile", value_name = "ICC_FILE")]
+    pub gain_map_alternate_icc_profile: Option<PathBuf>,
+
+    /// Maximum log2 gain in the gain map (default 2.0).
+    /// Requires --gain-map.
+    #[arg(long = "gain_map_max", value_name = "GAIN", value_parser = bounded_f32(0.0, 64.0))]
+    pub gain_map_max: Option<f32>,
+
+    /// Minimum log2 gain in the gain map (default 0.0).
+    /// Requires --gain-map.
+    #[arg(long = "gain_map_min", value_name = "GAIN", value_parser = bounded_f32(-64.0, 0.0))]
+    pub gain_map_min: Option<f32>,
+
+    /// HDR headroom of the base (SDR) image in stops (log2), default 0.0.
+    /// Requires --gain-map.
+    #[arg(long = "base_hdr_headroom", value_name = "STOPS")]
+    pub base_hdr_headroom: Option<f32>,
+
+    /// HDR headroom of the alternate (HDR) image in stops (log2), default 2.0.
+    /// Requires --gain-map.
+    #[arg(long = "alternate_hdr_headroom", value_name = "STOPS")]
+    pub alternate_hdr_headroom: Option<f32>,
+
+    /// Encode the gain map losslessly. Default: lossy (same distance as the
+    /// primary image).
+    /// Requires --gain-map.
+    #[arg(long)]
+    pub gain_map_lossless: bool,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -269,6 +318,29 @@ impl Args {
     /// jixel-only `--learned-rate`: default on (jixel's default is `true`).
     pub fn learned_rate_enabled(&self) -> bool {
         self.learned_rate == 1
+    }
+
+    /// Validate that gain-map-only options are not used without --gain-map,
+    /// and that --gain-map is not used with --fast-lossless.
+    pub fn validate_gain_map(&self) -> Result<(), String> {
+        if self.gain_map.is_none() {
+            for (is_set, flag) in [
+                (self.gain_map_alternate_color_space.is_some(), "--gain_map_alternate_color_space"),
+                (self.gain_map_alternate_icc_profile.is_some(), "--gain_map_alternate_icc_profile"),
+                (self.gain_map_max.is_some(), "--gain_map_max"),
+                (self.gain_map_min.is_some(), "--gain_map_min"),
+                (self.base_hdr_headroom.is_some(), "--base_hdr_headroom"),
+                (self.alternate_hdr_headroom.is_some(), "--alternate_hdr_headroom"),
+                (self.gain_map_lossless, "--gain_map_lossless"),
+            ] {
+                if is_set {
+                    return Err(format!(
+                        "{flag} requires --gain-map to also be specified"
+                    ));
+                }
+            }
+        }
+        Ok(())
     }
 }
 

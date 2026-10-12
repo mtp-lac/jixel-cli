@@ -15,8 +15,8 @@ use anyhow::{Context, Result, bail};
 use clap::Parser;
 use image::DynamicImage;
 use jixel::{
-    EncodeConfig, FlMeta, JpegTranscodeConfig, Orientation, distance_from_quality,
-    encode_jpeg_lossless_with_config,
+    EncodeConfig, FlMeta, GainMap, GainMapFloats, IsoGainMap, JpegTranscodeConfig,
+    Orientation, distance_from_quality, encode_jpeg_lossless_with_config,
 };
 
 use cli::{Args, ModularArg};
@@ -52,6 +52,8 @@ fn resolve_coding(args: &Args, file_bytes: &[u8]) -> Result<Coding> {
     if args.lossless && (args.distance.is_some() || args.quality.is_some()) {
         bail!("--lossless cannot be combined with --distance/--quality; use --distance=0.");
     }
+    args.validate_gain_map()
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
     if args.container == Some(1) {
         bail!(
             "--container=1 is not supported: jixel emits the container format only \
@@ -77,6 +79,9 @@ fn resolve_coding(args: &Args, file_bytes: &[u8]) -> Result<Coding> {
             (args.effort.is_some(), "--effort"),
             (args.modular.is_some(), "--modular"),
             (args.num_threads.is_some(), "--num_threads"),
+            (args.exif.is_some(), "--exif"),
+            (args.xmp.is_some(), "--xmp"),
+            (args.gain_map.is_some(), "--gain-map"),
         ] {
             if is_set {
                 bail!(
@@ -152,6 +157,17 @@ fn run(args: &Args) -> Result<()> {
 
     // ---- cjxl JPEG lossless transcode path ----
     if coding.lossless_jpeg {
+        if args.gain_map.is_some()
+            || args.exif.is_some()
+            || args.xmp.is_some()
+            || args.gain_map_alternate_color_space.is_some()
+            || args.gain_map_alternate_icc_profile.is_some()
+        {
+            bail!(
+                "Gain map, EXIF and XMP metadata are not supported with JPEG \
+                 lossless transcoding; use --lossless_jpeg=0 to encode pixels."
+            );
+        }
         if args.lossless_jpeg.is_none() && !args.quiet {
             eprintln!(
                 "Note: Implicit-default for JPEG is lossless-transcoding. \
@@ -277,7 +293,121 @@ fn encode_config(args: &Args, coding: &Coding) -> Result<EncodeConfig> {
     if args.intensity_target > 0.0 {
         config = config.with_intensity_target(args.intensity_target);
     }
+
+    // EXIF / XMP metadata embedding (forces container form).
+    if let Some(path) = &args.exif {
+        let exif_bytes = std::fs::read(path)
+            .with_context(|| format!("Failed to read EXIF file: {}", path.display()))?;
+        config = config.with_exif(exif_bytes);
+    }
+    if let Some(path) = &args.xmp {
+        let xmp_bytes = std::fs::read(path)
+            .with_context(|| format!("Failed to read XMP file: {}", path.display()))?;
+        config = config.with_xmp(xmp_bytes);
+    }
+
+    // HDR gain map attachment (forces container form).
+    if let Some(gm_path) = &args.gain_map {
+        config = config.with_gain_map(build_gain_map(args, gm_path)?);
+    }
+
     Ok(config.with_num_threads(args.thread_count()))
+}
+
+/// Load the gain-map image and construct a `GainMap` with ISO 21496-1 metadata
+/// from the CLI's float parameters.
+fn build_gain_map(args: &Args, gm_path: &PathBuf) -> Result<GainMap> {
+    let gm_bytes = std::fs::read(gm_path)
+        .with_context(|| format!("Failed to read gain map file: {}", gm_path.display()))?;
+    let gm_img = image::load_from_memory(&gm_bytes)
+        .with_context(|| format!("Failed to load gain map image: {}", gm_path.display()))?;
+
+    let (width, height) = (gm_img.width() as usize, gm_img.height() as usize);
+
+    // Build ISO 21496-1 metadata from the float parameters.
+    let floats = GainMapFloats {
+        min: [args.gain_map_min.unwrap_or(0.0); 3],
+        max: [args.gain_map_max.unwrap_or(2.0); 3],
+        base_hdr_headroom: args.base_hdr_headroom.unwrap_or(0.0),
+        alternate_hdr_headroom: args.alternate_hdr_headroom.unwrap_or(2.0),
+        ..Default::default()
+    };
+    let iso = IsoGainMap::from_floats(&floats)
+        .map_err(|e| anyhow::anyhow!("Invalid gain map parameters: {e}"))?;
+
+    let alternate_color_encoding = args
+        .gain_map_alternate_color_space
+        .map(|cs| cs.to_color_encoding());
+
+    let alternate_icc_profile = args
+        .gain_map_alternate_icc_profile
+        .as_ref()
+        .map(|p| std::fs::read(p))
+        .transpose()
+        .with_context(|| {
+            args.gain_map_alternate_icc_profile
+                .as_ref()
+                .map(|p| format!("Failed to read alternate ICC profile: {}", p.display()))
+                .unwrap_or_default()
+        })?;
+
+    // Dispatch on the gain map's pixel format.
+    let gain_map = match &gm_img {
+        DynamicImage::ImageRgb8(buf) => {
+            GainMap::rgb8(buf.as_raw().to_vec(), width, height, iso)
+        }
+        DynamicImage::ImageRgba8(buf) => {
+            let rgb = drop_alpha(buf.as_raw());
+            GainMap::rgb8(rgb, width, height, iso)
+        }
+        DynamicImage::ImageLuma8(buf) => {
+            GainMap::gray8(buf.as_raw().to_vec(), width, height, iso)
+        }
+        DynamicImage::ImageLumaA8(buf) => {
+            let luma: Vec<u8> = buf
+                .as_raw()
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|p| p[0])
+                .collect();
+            GainMap::gray8(luma, width, height, iso)
+        }
+        DynamicImage::ImageRgb16(buf) => {
+            GainMap::rgb16(buf.as_raw().to_vec(), 16, width, height, iso)
+        }
+        DynamicImage::ImageRgba16(buf) => {
+            let rgb = drop_alpha(buf.as_raw());
+            GainMap::rgb16(rgb, 16, width, height, iso)
+        }
+        DynamicImage::ImageLuma16(buf) => {
+            GainMap::gray16(buf.as_raw().to_vec(), 16, width, height, iso)
+        }
+        DynamicImage::ImageLumaA16(buf) => {
+            let luma: Vec<u16> = buf
+                .as_raw()
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|p| p[0])
+                .collect();
+            GainMap::gray16(luma, 16, width, height, iso)
+        }
+        other => bail!("unsupported gain map pixel format: {:?}", other.color()),
+    };
+
+    let mut gm = gain_map;
+    if let Some(enc) = alternate_color_encoding {
+        gm = gm.with_alternate_color_encoding(enc);
+    }
+    if let Some(icc) = alternate_icc_profile {
+        gm = gm.with_alternate_icc_profile(icc);
+    }
+    if args.gain_map_lossless {
+        gm = gm.with_lossless(true);
+    }
+
+    Ok(gm)
 }
 
 /// Standard encoder path (VarDCT lossy / modular lossless) for all pixel formats.
