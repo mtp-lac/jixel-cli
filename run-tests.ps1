@@ -49,6 +49,12 @@ Run-Case "splines-e9"        @($img, "$dir\splines-e9.jxl", "-e", "9", "--spline
 Run-Case "dots-e9"           @($img, "$dir\dots-e9.jxl", "-e", "9", "--dots", "1")
 Run-Case "dots-off"          @($img, "$dir\dots-off.jxl", "-e", "9", "--dots", "0")
 Run-Case "learned-rate-off"  @($img, "$dir\learned-rate-off.jxl", "-e", "9", "--learned-rate", "0")
+Run-Case "arbiter-cvvdp"     @($img, "$dir\arbiter-cvvdp.jxl", "--arbiter", "cvvdp")
+Run-Case "arbiter-ss2"       @($img, "$dir\arbiter-ss2.jxl", "--arbiter", "ssimulacra2")
+Run-Case "cvvdp-xyb-e9"      @($img, "$dir\cvvdp-xyb-e9.jxl", "-e", "9", "--arbiter", "cvvdp")
+Run-Case "ct-ycbcr"          @($img, "$dir\ct-ycbcr.jxl", "--coding-transform", "ycbcr")
+Run-Case "ct-rgb"            @($img, "$dir\ct-rgb.jxl", "--coding-transform", "rgb")
+Run-Case "ct-xyb"            @($img, "$dir\ct-xyb.jxl", "--coding-transform", "xyb")
 Run-Case "modular-lossy"     @($img, "$dir\modular-lossy.jxl", "-e", "9", "-m", "1")
 Run-Case "modular-auto"      @($img, "$dir\modular-auto.jxl", "-e", "9", "-m", "2")
 Run-Case "progressive"       @($img, "$dir\progressive.jxl", "-p")
@@ -118,6 +124,19 @@ Run-Case "err-fl-modular"    @($img, "$dir\neg16.jxl", "--fast-lossless", "-m", 
 Run-Case "err-fl-threads"    @($img, "$dir\neg17.jxl", "--fast-lossless", "--num_threads", "4") -Fail
 Run-Case "err-fl-splines"    @($img, "$dir\neg18.jxl", "--fast-lossless", "--splines") -Fail
 Run-Case "err-fl-dots"       @($img, "$dir\neg19.jxl", "--fast-lossless", "--dots", "1") -Fail
+
+# jixel 0.4.1 lossy-only controls (--arbiter, --coding-transform): reject where
+# they cannot take effect instead of silently dropping them
+Run-Case "err-arbiter-lossless" @($img, "$dir\neg20.jxl", "--arbiter", "cvvdp", "--lossless") -Fail
+Run-Case "err-arbiter-d0"       @($img, "$dir\neg21.jxl", "--arbiter", "cvvdp", "-d", "0") -Fail
+Run-Case "err-arbiter-q100"     @($img, "$dir\neg22.jxl", "--arbiter", "cvvdp", "-q", "100") -Fail
+Run-Case "err-arbiter-fl"       @($img, "$dir\neg23.jxl", "--arbiter", "cvvdp", "--fast-lossless") -Fail
+Run-Case "err-arbiter-jpeg"     @("test-images\rgb.jpg", "$dir\neg24.jxl", "--arbiter", "cvvdp") -Fail
+Run-Case "err-ct-lossless"      @($img, "$dir\neg25.jxl", "--coding-transform", "rgb", "--lossless") -Fail
+Run-Case "err-ct-fl"            @($img, "$dir\neg26.jxl", "--coding-transform", "rgb", "--fast-lossless") -Fail
+Run-Case "err-ct-jpeg"          @("test-images\rgb.jpg", "$dir\neg27.jxl", "--coding-transform", "rgb") -Fail
+Run-Case "err-arbiter-value"    @($img, "$dir\neg28.jxl", "--arbiter", "butteraugli") -Fail
+Run-Case "err-ct-value"         @($img, "$dir\neg29.jxl", "--coding-transform", "lab") -Fail
 
 Write-Host ""
 Write-Host "Summary: $pass passed, $fail failed" -ForegroundColor $(if ($fail) { "Red" } else { "Green" })

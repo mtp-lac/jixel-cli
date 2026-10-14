@@ -2,7 +2,7 @@
 
 A Windows command-line adapter for the [jixel](https://github.com/awxkee/jixel)
 JPEG XL encoder library. The library is used **unmodified** as a crates.io
-dependency (`jixel 0.3.4`), and the command-line interface follows **libjxl's
+dependency (`jixel 0.4.1`), and the command-line interface follows **libjxl's
 `cjxl`**: same positionals, flag spellings, and default semantics wherever
 jixel's API can express them. See [docs/cjxl-alignment.md](<docs/cjxl-alignment.md>)
 for the full diff.
@@ -24,6 +24,8 @@ jixel-cli.exe big.png out.jxl -e 9 --splines   # maximum density + splines
 jixel-cli.exe art.png out.jxl -m 1             # lossy modular arm
 jixel-cli.exe photo.png out.jxl --fast-lossless
 jixel-cli.exe icon.png out.jxl --strip_alpha 2 --num_threads 4
+jixel-cli.exe hdr.jpg out.jxl -e 9 --arbiter cvvdp   # CVVDP-tuned lossy encode
+jixel-cli.exe wide.png out.jxl --coding-transform ycbcr
 ```
 
 `OUTPUT` may be omitted (writes `INPUT.jxl`; cjxl requires it).
@@ -55,54 +57,82 @@ mirror cjxl.
 ## jixel-only extensions
 
 `--lossless` (alias `-d 0`), `--fast-lossless`, `--splines`,
-`--learned-rate <0\|1>`, `--color-space <srgb\|srgb-linear\|display-p3\|bt2020-pq\|bt2020-hlg>`,
+`--learned-rate <0\|1>`, `--arbiter <ssimulacra2\|cvvdp>`,
+`--coding-transform <xyb\|ycbcr\|rgb>`,
+`--color-space <srgb\|srgb-linear\|display-p3\|bt2020-pq\|bt2020-hlg>`,
 `--icc-profile <FILE>`, `--orientation <1-8>`.
 
 `--learned-rate` is the switch for jixel's learned rate pricing (default on;
 pass `0` to disable). It has no cjxl counterpart.
 
+`--arbiter` selects the perceptual metric the lossy encoder tunes its
+rate-distortion decisions for (new in jixel 0.4.1; default `ssimulacra2`):
+
+| Value | Meaning |
+|-------|---------|
+| `ssimulacra2` | SSIMULACRA 2 (default) |
+| `cvvdp` | ColorVideoVDP via `cvvdp-lite`; prefers different transform and trellis trade-offs, aimed at HDR and color-accuracy-critical content |
+
+`--coding-transform` selects the color transform lossy frames are coded in
+(default `xyb`):
+
+| Value | Meaning |
+|-------|---------|
+| `xyb` | perceptual XYB (default; required for CVVDP) |
+| `ycbcr` | JPEG-matrix Cb/Y/Cr, decoder-inverted |
+| `rgb` | samples unchanged (R/G/B, or C/M/Y for CMYK) |
+
+Both are **lossy-only**: they are rejected (not silently ignored) at lossless
+distance, with `--fast-lossless`, and on the lossless-JPEG-transcode path. Like
+`--learned-rate`, `--arbiter` only changes the output at effort 9-10
+(jixel `Speed::Slow`), because the faster tiers do not run the decisions that
+consult the metric.
+
 `--fast-lossless` selects jixel's dedicated fast encoder, whose API takes only
 pixels, a color space, an alpha flag and `FlMeta`. It therefore **rejects**
 `-d`, `-q`, `--lossless`, `-e`, `-m`, `-p`, `--patches`, `--faster_decoding`,
-`--intensity_target`, `--num_threads` and `--splines` instead of silently
-ignoring them; `--strip_alpha`, `--color-space`, `--icc-profile` and
-`--orientation` do apply.
+`--intensity_target`, `--num_threads`, `--splines`, `--arbiter` and
+`--coding-transform` instead of silently ignoring them; `--strip_alpha`,
+`--color-space`, `--icc-profile` and `--orientation` do apply.
 
-## What's new in jixel 0.3.4
+## What's new in jixel 0.4.1
 
-This project tracks upstream `awxkee/jixel` and ships it unmodified, so the
-encoder work from upstream PRs #142-#145 comes along with the dependency bump
-(jixel-cli upgraded `0.3.2` -> `0.3.4`).
+This project tracks upstream `awxkee/jixel` and ships it unmodified
+(jixel-cli upgraded `0.4.0` -> `0.4.1`). Upstream 0.4.1 is PR
+[#157](https://github.com/awxkee/jixel/pull/157) ("CVVDP, trellis, better low
+qualities").
 
-**Now exposed as flags (follow libjxl's cjxl conventions):**
+**New public API in 0.4.1, now exposed as flags:**
 
-- **`--dots <0|1>`** - cjxl spelling and semantics ("Disable/enable dots
-  generation. 0 = disable. 1 = enable. Default = encoder chooses"). jixel 0.3.4
-  added `EncodeConfig::dots` / `with_dots(bool)`: isolated bright or dark spots
-  are coded as signed Gaussian dots from a small template atlas next to the
-  lossy VarDCT frame, each passing a rate-distortion test. Requires the
-  `splines` Cargo feature (enabled here), Slow speed and the default decoding
-  speed.
-- **`--learned-rate <0|1>`** - jixel-only extension (no cjxl counterpart) for
-  the learned rate pricing switch; default on, pass `0` to disable.
+- **`--arbiter <ssimulacra2|cvvdp>`** - upstream added the `Arbiter` enum and
+  `EncodeConfig::arbiter` / `with_arbiter`. It selects the perceptual metric the
+  lossy encoder tunes for: SSIMULACRA 2 (default) or ColorVideoVDP, a new
+  `cvvdp-lite` dependency. Each arbiter is a row of tuning constants
+  (`rdoq_lambda`, `qm_ss2_distance`, `rerank_downgrades`, `dct16_luma_hf`,
+  `vlq_bias_rect`), and CVVDP additionally drives a closed-loop judge on the
+  reconstructed XYB image. CVVDP therefore requires the XYB coding transform,
+  and - like `--learned-rate` - the arbiter only bites at effort 9-10
+  (verified: `-e 9 --arbiter cvvdp` and `-e 9 --arbiter ssimulacra2` produce
+  different streams; at effort 1-8 they are byte-identical).
+- **`--coding-transform <xyb|ycbcr|rgb>`** - `EncodeConfig::coding_transform` /
+  `with_coding_transform` (available since 0.4.0, previously unexposed): chooses
+  the color transform lossy frames are coded in.
 
-**Already active by default (no flag needed):**
+**Encoder changes that come along with the bump (no flag needed):**
 
-- **Learned rate pricing.** VarDCT transforms are chosen by what each candidate
-  costs under the image's own coefficient statistics instead of a fixed rate
-  model. Patterned and synthetic content compresses much better; photographs are
-  about unchanged. On by default; it takes effect at effort 9-10
-  (jixel `Speed::Slow`), where it costs encode time. Switch: `--learned-rate`.
-- **DC smoothing and DC coding.** New rate modelling on the lossy encoder's DC
-  path; applies to every lossy encode.
-- **Splines and patches fixes.** Thin curvilinear structures (wires, veins,
-  ink lines) and repeated content now take the corrected code paths, so the
-  existing `--splines` and `--patches` flags benefit directly.
+- **Trellis / RDOQ improvements.** The AC trellis rate price is now
+  arbiter-specific (`rdoq_lambda` 1.5 for SSIMULACRA 2, 1.25 for CVVDP).
+- **Better low qualities.** The very-low-quality band ramps its rectangle-merge
+  bias per arbiter (`vlq_bias_rect`), and DCT16 luma weighting follows the
+  arbiter.
+- **CVVDP-driven decisions.** With `--arbiter cvvdp`, the closed loop uses
+  ColorVideoVDP as its exact metric where SSIMULACRA 2 was used before; the
+  candidate ranking marginals still come from SSIMULACRA 2.
 
 Upstream knobs that still have no jixel-cli flag: `progressive_passes` /
 `progressive_shifts` (cjxl's `--progressive_ac`, `--qprogressive_ac`,
-`--progressive_dc`), `gain_map` (HDR gain map in a `jhgm` box), `exif` / `xmp`
-(metadata boxes), `brotli_compression` (Brotli-compressed `brob` boxes), and the
+`--progressive_dc`), `brotli_compression` (Brotli-compressed `brob` boxes),
+`fill_invisible`, CMYK input (`encode_image_cmyk*` / `InkConvention`), and the
 remaining tone-mapping fields `min_nits`, `relative_to_max_display`,
 `linear_below`. See [docs/cjxl-alignment.md](<docs/cjxl-alignment.md>) for the
 full cjxl comparison.
@@ -138,14 +168,14 @@ Test rig:
 ```powershell
 .\gen-test-images.ps1                        # 8-bit PNG/JPEG fixtures
 cargo run --release --example gen16          # 16-bit/float fixtures
-.\run-tests.ps1                              # 60-case cjxl-syntax matrix
-cargo run --release --example verify         # 41 decode checks (jxl-oxide)
+.\run-tests.ps1                              # 80-case cjxl-syntax matrix
+cargo run --release --example verify         # 47 decode checks (jxl-oxide)
 ```
 
 `verify` decodes every output with **jxl-oxide** (independent pure-Rust
 decoder, dev-dependency): 18 lossless streams must round-trip **bit-exact**
 (including 32-bit float RGB and RGBA), lossy streams must decode with sane
-PSNR. Last run: **60/60 encode cases, 41/41 verification cases**.
+PSNR. Last run: **80/80 encode cases, 47/47 verification cases**.
 
 ## License
 

@@ -170,6 +170,38 @@ const CASES: &[Case] = &[
         jxl: "test-output/p3-color.jxl",
         expect: Expect::Report,
     },
+    // jixel 0.4.1 lossy controls: --arbiter (perceptual metric) and
+    // --coding-transform (XYB / YCbCr / Rgb) must all produce decodable streams.
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/arbiter-cvvdp.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/arbiter-ss2.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/cvvdp-xyb-e9.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/ct-ycbcr.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/ct-rgb.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/ct-xyb.jxl",
+        expect: Expect::Report,
+    },
     Case {
         src: "test-images/rgba.png",
         jxl: "test-output/rgba-default.jxl",

@@ -82,6 +82,8 @@ fn resolve_coding(args: &Args, file_bytes: &[u8]) -> Result<Coding> {
             (args.exif.is_some(), "--exif"),
             (args.xmp.is_some(), "--xmp"),
             (args.gain_map.is_some(), "--gain-map"),
+            (!args.arbiter_is_default(), "--arbiter"),
+            (!args.coding_transform_is_default(), "--coding-transform"),
         ] {
             if is_set {
                 bail!(
@@ -126,6 +128,25 @@ fn resolve_coding(args: &Args, file_bytes: &[u8]) -> Result<Coding> {
             "Must not set non-zero distance in combination with --lossless_jpeg=1, \
              which is set by default.\nSet --lossless_jpeg=0 to recompress the JPEG as pixels."
         );
+    }
+
+    // --arbiter (jixel 0.4.1) and --coding-transform (jixel 0.4.x) describe how
+    // *lossy* frames are coded and tuned; jixel documents the arbiter as
+    // "ignored for lossless". Reject explicit non-default values wherever those
+    // controls cannot reach, instead of silently dropping them.
+    if !args.arbiter_is_default() || !args.coding_transform_is_default() {
+        if lossless_jpeg {
+            bail!(
+                "--arbiter and --coding-transform do not apply to lossless JPEG \
+                 transcoding; pass --lossless_jpeg=0 to recompress the JPEG as lossy pixels."
+            );
+        }
+        if distance == 0.0 {
+            bail!(
+                "--arbiter and --coding-transform only tune lossy encoding and have no \
+                 effect at lossless (distance 0); drop them or use a non-zero distance."
+            );
+        }
     }
 
     Ok(Coding {
@@ -279,7 +300,9 @@ fn encode_config(args: &Args, coding: &Coding) -> Result<EncodeConfig> {
     if !coding.lossless {
         config = config
             .with_distance(coding.distance)
-            .with_lossy_modular(args.modular().into());
+            .with_lossy_modular(args.modular().into())
+            .with_arbiter(args.arbiter.into())
+            .with_coding_transform(args.coding_transform.into());
     }
     if let Some(path) = &args.icc_profile {
         let profile = std::fs::read(path)

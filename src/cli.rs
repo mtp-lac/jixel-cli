@@ -6,7 +6,7 @@
 use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, ValueEnum};
-use jixel::{ColorEncoding, DecodingSpeed, FlMeta, LossyModular, Speed};
+use jixel::{Arbiter, CodingTransform, ColorEncoding, DecodingSpeed, FlMeta, LossyModular, Speed};
 
 /// Parse a bounded float flag value with a cjxl-style message.
 fn bounded_f32(min: f32, max: f32) -> impl Fn(&str) -> Result<f32, String> + Clone {
@@ -184,6 +184,24 @@ pub struct Args {
     #[arg(long, value_name = "0|1", default_value_t = 1, value_parser = clap::value_parser!(u32).range(0..=1))]
     pub learned_rate: u32,
 
+    /// Perceptual metric the lossy encoder tunes its rate-distortion decisions
+    /// for (jixel-only, new in jixel 0.4.1; default `ssimulacra2`).
+    /// `ssimulacra2` = SSIMULACRA 2; `cvvdp` = ColorVideoVDP (via cvvdp-lite),
+    /// better for HDR and color-accuracy-critical content. Like `--learned-rate`
+    /// it only takes effect at effort 9-10 (jixel `Speed::Slow`), and CVVDP
+    /// additionally requires the XYB coding transform (the default; see
+    /// --coding-transform). Lossy-only: rejected with --lossless,
+    /// --fast-lossless and JPEG transcoding.
+    #[arg(long, value_enum, default_value = "ssimulacra2")]
+    pub arbiter: ArbiterArg,
+
+    /// Color transform that lossy frames are coded in (jixel-only; default `xyb`).
+    /// `xyb` = perceptual XYB (default); `ycbcr` = JPEG-matrix Cb/Y/Cr;
+    /// `rgb` = samples unchanged, coded as R/G/B. Lossy-only: rejected with
+    /// --lossless, --fast-lossless and JPEG transcoding.
+    #[arg(long, value_enum, default_value = "xyb")]
+    pub coding_transform: CodingTransformArg,
+
     /// Color encoding written into the codestream (jixel presets).
     #[arg(long, value_enum, default_value = "srgb")]
     pub color_space: ColorSpaceArg,
@@ -269,6 +287,43 @@ impl From<ModularArg> for LossyModular {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum ArbiterArg {
+    /// SSIMULACRA 2 (default).
+    Ssimulacra2,
+    /// ColorVideoVDP (better for HDR and color-accuracy-critical content).
+    Cvvdp,
+}
+
+impl From<ArbiterArg> for Arbiter {
+    fn from(v: ArbiterArg) -> Self {
+        match v {
+            ArbiterArg::Ssimulacra2 => Arbiter::Ssimulacra2,
+            ArbiterArg::Cvvdp => Arbiter::Cvvdp,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum CodingTransformArg {
+    /// Perceptual XYB (default).
+    Xyb,
+    /// JPEG-matrix Cb/Y/Cr.
+    Ycbcr,
+    /// Samples unchanged: R/G/B.
+    Rgb,
+}
+
+impl From<CodingTransformArg> for CodingTransform {
+    fn from(v: CodingTransformArg) -> Self {
+        match v {
+            CodingTransformArg::Xyb => CodingTransform::Xyb,
+            CodingTransformArg::Ycbcr => CodingTransform::YCbCr,
+            CodingTransformArg::Rgb => CodingTransform::Rgb,
+        }
+    }
+}
+
 impl Args {
     /// cjxl's `--effort` default is 7 (jixel `Speed::Fast`).
     pub fn effort(&self) -> u32 {
@@ -318,6 +373,18 @@ impl Args {
     /// jixel-only `--learned-rate`: default on (jixel's default is `true`).
     pub fn learned_rate_enabled(&self) -> bool {
         self.learned_rate == 1
+    }
+
+    /// jixel-only `--arbiter`: default SSIMULACRA 2. `false` means the user
+    /// explicitly selected a different perceptual metric (CVVDP).
+    pub fn arbiter_is_default(&self) -> bool {
+        self.arbiter == ArbiterArg::Ssimulacra2
+    }
+
+    /// jixel-only `--coding-transform`: default XYB. `false` means the user
+    /// explicitly selected YCbCr or Rgb.
+    pub fn coding_transform_is_default(&self) -> bool {
+        self.coding_transform == CodingTransformArg::Xyb
     }
 
     /// Validate that gain-map-only options are not used without --gain-map,
