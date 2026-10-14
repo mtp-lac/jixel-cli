@@ -55,8 +55,12 @@ pub struct Args {
     )]
     pub quality: Option<f32>,
 
-    /// Encoder effort, 1 .. 10 (default 7). Higher = smaller output at the
-    /// same quality. Mapped onto jixel's three speed tiers.
+    /// Encoder effort, 1 .. 10 (default 7): higher = more encoder search at the
+    /// same distance. Usually smaller output at equal quality, but the search
+    /// targets the perceptual metric, so the top tier can land a few bytes
+    /// above `-e 9`. Mapped onto jixel's six speed/density tiers:
+    /// 1 UltraFast, 2-3 Fastest, 4-7 Fast (default), 8 Medium, 9 Slow,
+    /// 10 ExtraSlow.
     /// Rejected with --fast-lossless (that encoder has no effort control).
     #[arg(
         short,
@@ -346,12 +350,25 @@ impl Args {
         }
     }
 
-    /// Resolve the cjxl effort range onto jixel's three speed tiers.
+    /// Resolve the cjxl effort range onto jixel's six speed/density tiers.
+    ///
+    /// jixel orders its tiers `UltraFast < Fastest < Fast < Medium < Slow <
+    /// ExtraSlow`; each slower tier is a strict superset of the tools of every
+    /// faster one, so this mapping is monotonic: raising `--effort` never picks
+    /// a faster (less thorough) tier.
+    ///
+    /// Effort 7 - cjxl's default - lands on jixel's own `#[default]`
+    /// `Speed::Fast`, so the default invocation is unchanged. Efforts 9-10 stay
+    /// on `Slow`/`ExtraSlow`, which is where jixel gates its `Slow`-only tools
+    /// (`--splines`, `--dots`, `--learned-rate`, `--arbiter`).
     pub fn speed(&self) -> Speed {
         match self.effort() {
-            1..=3 => Speed::Fastest,
-            4..=8 => Speed::Fast,
-            _ => Speed::Slow,
+            1 => Speed::UltraFast,
+            2..=3 => Speed::Fastest,
+            4..=7 => Speed::Fast,
+            8 => Speed::Medium,
+            9 => Speed::Slow,
+            _ => Speed::ExtraSlow,
         }
     }
 

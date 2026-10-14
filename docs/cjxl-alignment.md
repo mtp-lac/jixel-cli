@@ -24,7 +24,7 @@ jixel-cli  [OPTIONS] INPUT [OUTPUT]
 |------|--------------|------------------|
 | `-d, --distance <0.0..25.0>` | 0 = lossless; unset default: 1.0 (JPEG/GIF input: 0) | ✓ full parity, incl. the JPEG/GIF default |
 | `-q, --quality <0..100>` | mapped to distance; 100 = lossless; exclusive with `-d` | ✓; q≥100 routes to the lossless path (jixel's *internal* curve ends at d=0.05 for q100 — the CLI enforces libjxl's q100=lossless contract) |
-| `-e, --effort <1..10>` (default 7) | 10 discrete speed tiers | ✓ coarse-mapped onto jixel's 3 tiers: 1–3 Fastest, 4–8 Fast, 9–10 Slow. Default effort 7 = jixel `Fast`. `--allow_expert_options`/effort 11 unsupported |
+| `-e, --effort <1..10>` (default 7) | 10 discrete speed tiers | ✓ mapped onto all six jixel tiers: 1 UltraFast, 2–3 Fastest, 4–7 Fast (jixel's `#[default]`), 8 Medium, 9 Slow, 10 ExtraSlow. Monotonic (a higher effort never picks a faster tier) and default-preserving (effort 7 = jixel default). `--allow_expert_options`/effort 11 unsupported |
 | `-V, --version` | print version, exit 0 | ✓ |
 | `--quiet` (no short!) | minimal printing | ✓ |
 | `-v, --verbose` (repeatable) | extra info | ✓ (counted) |
@@ -138,7 +138,10 @@ main use case for it in cjxl.
   lossy-only (jixel routes lossless only for 32-bit float).
 * 32-bit float output requires codestream level 10, so float lossless files
   are emitted in container form.
-* Effort granularity: 3 tiers, not 10.
+* Effort granularity: 6 jixel tiers for 10 cjxl levels, not 10 distinct tiers.
+  The mapping is monotonic and lands effort 7 on jixel's default `Speed::Fast`;
+  the tiers jixel cannot express as a separate cjxl level are shared between
+  neighbouring efforts (4–7 all map to `Fast`).
 * `--faster_decoding`: 3 levels, not 5.
 * Container cannot be forced (`--container=1` errors).
 

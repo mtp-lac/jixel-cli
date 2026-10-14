@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - Updated jixel dependency from 0.4.0 to 0.4.1 (latest upstream release)
+- `-e/--effort` now resolves onto all six jixel speed tiers instead of three
+  (`UltraFast`, `Fastest`, `Fast`, `Medium`, `Slow`, `ExtraSlow`): effort 1
+  UltraFast, 2-3 Fastest, 4-7 Fast, 8 Medium, 9 Slow, 10 ExtraSlow. The mapping
+  is monotonic and default-preserving (effort 7 stays on jixel's `#[default]`
+  `Speed::Fast`), so only `-e 1`, `-e 8` and `-e 10` change output
 - Refreshed README for jixel 0.4.1 and corrected the list of upstream knobs
   that still have no CLI flag
 
@@ -21,8 +26,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `EncodeConfig::coding_transform`: selects the color transform lossy frames
   are coded in
 - Encode-matrix cases for the new flags and their rejection rules, plus
-  jxl-oxide decode checks for the new outputs (80 encode cases, 47 verification
+  jxl-oxide decode checks for the new outputs (86 encode cases, 53 verification
   cases)
+- Effort-tier boundary cases (`-e 1`, `-e 8`, `-e 10`) for both lossy and
+  lossless, the latter asserting bit-exact round-trips at the new tiers
 - Validation that rejects `--arbiter` / `--coding-transform` where they cannot
   take effect (`--lossless`, `-d 0`, `-q 100`, `--fast-lossless`, and the
   lossless-JPEG-transcode path)

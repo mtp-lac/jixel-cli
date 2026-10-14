@@ -45,6 +45,11 @@ Run-Case "lossy-d05"         @($img, "$dir\lossy-d05.jxl", "-d", "0.5")
 Run-Case "lossy-q85"         @($img, "$dir\lossy-q85.jxl", "-q", "85")
 Run-Case "lossy-e2"          @($img, "$dir\lossy-e2.jxl", "-e", "2")
 Run-Case "slow-e9"           @($img, "$dir\slow-e9.jxl", "-e", "9")
+# effort -> jixel tier boundaries: 1 UltraFast, 8 Medium, 10 ExtraSlow
+# (2-3 Fastest and 9 Slow are covered by lossy-e2 / slow-e9 above)
+Run-Case "effort-e1"         @($img, "$dir\effort-e1.jxl", "-e", "1")
+Run-Case "effort-e8"         @($img, "$dir\effort-e8.jxl", "-e", "8")
+Run-Case "effort-e10"        @($img, "$dir\effort-e10.jxl", "-e", "10")
 Run-Case "splines-e9"        @($img, "$dir\splines-e9.jxl", "-e", "9", "--splines")
 Run-Case "dots-e9"           @($img, "$dir\dots-e9.jxl", "-e", "9", "--dots", "1")
 Run-Case "dots-off"          @($img, "$dir\dots-off.jxl", "-e", "9", "--dots", "0")
@@ -69,6 +74,10 @@ Run-Case "fast-lossless"     @($img, "$dir\fast-lossless.jxl", "--fast-lossless"
 Run-Case "threads-0"         @($img, "$dir\threads-0.jxl", "-q", "100", "--num_threads", "0")
 Run-Case "threads-4"         @($img, "$dir\threads-4.jxl", "-q", "100", "--num_threads", "4")
 Run-Case "fd3-lossless"      @($img, "$dir\fd3-lossless.jxl", "-q", "100", "--faster_decoding", "3")
+# lossless must stay bit-exact at the newly reachable tiers
+Run-Case "lossless-e1"       @($img, "$dir\lossless-e1.jxl", "-q", "100", "-e", "1")
+Run-Case "lossless-e8"       @($img, "$dir\lossless-e8.jxl", "-q", "100", "-e", "8")
+Run-Case "lossless-e10"      @($img, "$dir\lossless-e10.jxl", "-q", "100", "-e", "10")
 
 # --- alpha / formats ---
 Run-Case "rgba-default"      @($rgba, "$dir\rgba-default.jxl")

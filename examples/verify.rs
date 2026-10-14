@@ -53,6 +53,22 @@ const CASES: &[Case] = &[
         jxl: "test-output/fast-lossless.jxl",
         expect: Expect::Exact,
     },
+    // lossless must stay bit-exact at every newly reachable speed tier
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/lossless-e1.jxl",
+        expect: Expect::Exact,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/lossless-e8.jxl",
+        expect: Expect::Exact,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/lossless-e10.jxl",
+        expect: Expect::Exact,
+    },
     Case {
         src: "test-images/rgba.png",
         jxl: "test-output/rgba-lossless.jxl",
@@ -200,6 +216,22 @@ const CASES: &[Case] = &[
     Case {
         src: "test-images/rgb.png",
         jxl: "test-output/ct-xyb.jxl",
+        expect: Expect::Report,
+    },
+    // effort tier boundaries must all produce decodable lossy streams
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/effort-e1.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/effort-e8.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/effort-e10.jxl",
         expect: Expect::Report,
     },
     Case {

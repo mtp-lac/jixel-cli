@@ -30,13 +30,37 @@ jixel-cli.exe wide.png out.jxl --coding-transform ycbcr
 
 `OUTPUT` may be omitted (writes `INPUT.jxl`; cjxl requires it).
 
+## Effort / speed tiers
+
+cjxl's `--effort` is a 1-10 scale; jixel 0.4.1 has **six** speed/density tiers,
+each a strict superset of the tools of every faster one. `--effort` resolves
+onto all six:
+
+| Effort | jixel `Speed` | Character |
+|--------|---------------|-----------|
+| 1 | `UltraFast` | no transform search at all; plain 8×8 DCT, cheapest entropy coding |
+| 2-3 | `Fastest` | 16×16 merges on quiet blocks, prefix-clustered contexts, DC predictor choice |
+| 4-7 | `Fast` | square transforms, quantizer refinement, learned DC tree (jixel's default; effort 7 is the CLI default) |
+| 8 | `Medium` | full transform and color search of `Slow` without its costliest refinements |
+| 9 | `Slow` | every standard coding tool (`--splines`, `--dots`, `--learned-rate`, `--arbiter` engage here) |
+| 10 | `ExtraSlow` | all `Slow` tools plus exhaustive final ANS entropy search and wider quantization search |
+
+The mapping is **monotonic** (raising `--effort` never selects a faster, less
+thorough tier) and **default-preserving** (effort 7 stays on jixel's own
+`#[default]` `Speed::Fast`). It is monotonic in *search effort*, not in byte
+count: the encoder optimizes the perceptual metric, so `-e 10` can land a few
+bytes above `-e 9` on some images while searching strictly more. Because jixel
+spells its `Slow`-only tools in terms of tier, not effort, `--splines`,
+`--dots`, `--learned-rate` and `--arbiter` are documented by their effective
+range, **effort 9-10**.
+
 ## cjxl-compatible flags
 
 | Flag | Meaning |
 |------|---------|
 | `-d, --distance <0.0..25.0>` | 0 = lossless. Default 1.0 (JPEG/GIF input: 0) |
 | `-q, --quality <0..100>` | maps to distance; 100 = lossless; exclusive with `-d` |
-| `-e, --effort <1..10>` | default 7; jixel has 3 tiers (1–3 / 4–8 / 9–10) |
+| `-e, --effort <1..10>` | default 7; maps onto jixel's six tiers: 1 UltraFast, 2–3 Fastest, 4–7 Fast, 8 Medium, 9 Slow, 10 ExtraSlow |
 | `-j, --lossless_jpeg <0\|1>` | JPEG transcode control; default 1 on JPEG input |
 | `--allow_jpeg_reconstruction <0\|1>` | keep/omit the JBRD reconstruction box |
 | `-m, --modular <0\|1\|2>` | VarDCT / Modular / auto (2 = jixel both-arms) |
@@ -117,6 +141,11 @@ qualities").
 - **`--coding-transform <xyb|ycbcr|rgb>`** - `EncodeConfig::coding_transform` /
   `with_coding_transform` (available since 0.4.0, previously unexposed): chooses
   the color transform lossy frames are coded in.
+- **All six speed tiers are now reachable via `-e/--effort`** - jixel 0.4.0 added
+  `UltraFast`, `Medium` and `ExtraSlow` to the original three, but the CLI still
+  collapsed `--effort` onto 3 of them. The mapping now covers `UltraFast`
+  (effort 1), `Fastest` (2-3), `Fast` (4-7), `Medium` (8), `Slow` (9) and
+  `ExtraSlow` (10). See [Effort / speed tiers](#effort--speed-tiers).
 
 **Encoder changes that come along with the bump (no flag needed):**
 
@@ -168,14 +197,15 @@ Test rig:
 ```powershell
 .\gen-test-images.ps1                        # 8-bit PNG/JPEG fixtures
 cargo run --release --example gen16          # 16-bit/float fixtures
-.\run-tests.ps1                              # 80-case cjxl-syntax matrix
-cargo run --release --example verify         # 47 decode checks (jxl-oxide)
+.\run-tests.ps1                              # 86-case cjxl-syntax matrix
+cargo run --release --example verify         # 53 decode checks (jxl-oxide)
 ```
 
 `verify` decodes every output with **jxl-oxide** (independent pure-Rust
-decoder, dev-dependency): 18 lossless streams must round-trip **bit-exact**
-(including 32-bit float RGB and RGBA), lossy streams must decode with sane
-PSNR. Last run: **80/80 encode cases, 47/47 verification cases**.
+decoder, dev-dependency): 21 lossless streams must round-trip **bit-exact**
+(including 32-bit float RGB and RGBA, and every effort tier), lossy streams must
+decode with sane PSNR. Last run: **86/86 encode cases, 53/53 verification
+cases**.
 
 ## License
 
