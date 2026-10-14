@@ -75,7 +75,7 @@ range, **effort 9-10**.
 | `--quiet`, `-v/--verbose`, `-V/--version`, `-h/--help` | as in cjxl |
 
 Output format (`Encoding [VarDCT, d1.000, effort: 7]` /
-`Compressed to 530 bytes (0.345 bpp).`) and exit codes (0 ok, 1 error)
+`Compressed to 493 bytes (0.321 bpp).`) and exit codes (0 ok, 1 error)
 mirror cjxl.
 
 ## jixel-only extensions
