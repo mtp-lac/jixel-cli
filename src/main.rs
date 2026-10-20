@@ -84,6 +84,9 @@ fn resolve_coding(args: &Args, file_bytes: &[u8]) -> Result<Coding> {
             (args.gain_map.is_some(), "--gain-map"),
             (!args.arbiter_is_default(), "--arbiter"),
             (!args.coding_transform_is_default(), "--coding-transform"),
+            (args.progressive_dc.is_some(), "--progressive_dc"),
+            (args.progressive_dc_levels.is_some(), "--progressive_dc_levels"),
+            (!args.group_order_is_default(), "--group_order"),
         ] {
             if is_set {
                 bail!(
@@ -92,6 +95,10 @@ fn resolve_coding(args: &Args, file_bytes: &[u8]) -> Result<Coding> {
                 );
             }
         }
+    }
+
+    if args.progressive_dc_levels.is_some() && !args.progressive_dc_enabled() {
+        bail!("--progressive_dc_levels requires --progressive_dc=1.");
     }
 
     let is_jpeg = file_bytes.starts_with(&[0xFF, 0xD8]);
@@ -130,21 +137,31 @@ fn resolve_coding(args: &Args, file_bytes: &[u8]) -> Result<Coding> {
         );
     }
 
-    // --arbiter (jixel 0.4.1) and --coding-transform (jixel 0.4.x) describe how
-    // *lossy* frames are coded and tuned; jixel documents the arbiter as
-    // "ignored for lossless". Reject explicit non-default values wherever those
-    // controls cannot reach, instead of silently dropping them.
-    if !args.arbiter_is_default() || !args.coding_transform_is_default() {
+    // Lossy-only controls: --arbiter and --coding-transform (jixel 0.4.1),
+    // then --progressive_dc, --progressive_dc_levels and --group_order (jixel
+    // 0.4.2) all tune the lossy VarDCT path. jixel ignores them at lossless and
+    // on the JPEG transcode path, so reject explicit non-default values instead
+    // of silently dropping them.
+    if !args.arbiter_is_default()
+        || !args.coding_transform_is_default()
+        || args.progressive_dc_enabled()
+        || args.progressive_dc_levels.is_some()
+        || !args.group_order_is_default()
+    {
         if lossless_jpeg {
             bail!(
-                "--arbiter and --coding-transform do not apply to lossless JPEG \
-                 transcoding; pass --lossless_jpeg=0 to recompress the JPEG as lossy pixels."
+                "--arbiter, --coding-transform, --progressive_dc, \
+                 --progressive_dc_levels and --group_order do not apply to lossless \
+                 JPEG transcoding; pass --lossless_jpeg=0 to recompress the JPEG as \
+                 lossy pixels."
             );
         }
         if distance == 0.0 {
             bail!(
-                "--arbiter and --coding-transform only tune lossy encoding and have no \
-                 effect at lossless (distance 0); drop them or use a non-zero distance."
+                "--arbiter, --coding-transform, --progressive_dc, \
+                 --progressive_dc_levels and --group_order only tune lossy encoding \
+                 and have no effect at lossless (distance 0); drop them or use a \
+                 non-zero distance."
             );
         }
     }
@@ -302,7 +319,12 @@ fn encode_config(args: &Args, coding: &Coding) -> Result<EncodeConfig> {
             .with_distance(coding.distance)
             .with_lossy_modular(args.modular().into())
             .with_arbiter(args.arbiter.into())
-            .with_coding_transform(args.coding_transform.into());
+            .with_coding_transform(args.coding_transform.into())
+            .with_progressive_dc(args.progressive_dc_enabled())
+            .with_group_order(args.group_order.into());
+        if let Some(levels) = args.progressive_dc_levels {
+            config = config.with_progressive_dc_levels(levels);
+        }
     }
     if let Some(path) = &args.icc_profile {
         let profile = std::fs::read(path)

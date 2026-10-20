@@ -5,6 +5,30 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.4.2] - 2026-10-20
+
+### Changed
+- Updated jixel dependency from 0.4.1 to 0.4.2 (latest upstream release)
+- Documented jixel's default settings (`EncodeConfig::default`, `JpegTranscodeConfig`,
+  `FlMeta`) and the effective CLI defaults in a new README "Default settings" section
+- Refreshed README and docs/cjxl-alignment.md for jixel 0.4.2; corrected the list of
+  upstream knobs that still have no CLI flag (`--progressive_dc` is now exposed)
+
+### Added
+- `--progressive_dc <0|1>` flag exposing jixel 0.4.2's `EncodeConfig::progressive_dc`
+  (lossy VarDCT progressive DC frame; default off)
+- `--progressive_dc_levels <LEVELS>` jixel-only flag exposing
+  `EncodeConfig::progressive_dc_levels` (limits the progressive DC frame's squeeze
+  levels; requires `--progressive_dc=1`)
+- `--group_order <scanline|center-first|diagonals>` flag exposing jixel 0.4.2's
+  `GroupOrder` enum (`scanline`/`center-first` match cjxl `--group_order=0/1`;
+  `diagonals` is a jixel extension)
+- Encode-matrix cases for the new flags and their rejection rules, plus jxl-oxide
+  decode checks for the new outputs
+- Validation that rejects the new lossy-only controls where they cannot take effect
+  (`--lossless`, `-d 0`, `-q 100`, `--fast-lossless`, and the lossless-JPEG-transcode
+  path)
+
 ## [0.4.1] - 2026-10-14
 
 ### Changed
@@ -65,9 +89,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## Upstream Jixel Changelog
 
 jixel-cli pins upstream `awxkee/jixel` and ships it unmodified. This project
-upgraded `0.3.4` -> `0.4.1`, so the following is that range: the encoder work
-that merged upstream in PRs #146-#157, now inside this binary. Entries are the
-upstream commit/PR subjects.
+upgraded `0.3.4` -> `0.4.2`, so the following is that range. Entries describe
+the public API and encoder changes that landed upstream, now inside this binary.
+
+### v0.4.2 (2026-10-20)
+
+**New public API (0.4.1 -> 0.4.2):**
+
+* `EncodeConfig::progressive_dc` + `with_progressive_dc(bool)` — code the lossy
+  VarDCT frame's 1:8 DC plane as its own squeezed modular frame ahead of the main
+  frame, so a decoder can show previews refining from 1:256 to 1:8 before any AC
+  data arrives. Costs some size; applies to XYB frames without alpha only; other
+  frames ignore it. Defaults to false. Wired to `--progressive_dc`.
+* `EncodeConfig::progressive_dc_levels` + `with_progressive_dc_levels(u32)` —
+  number of squeeze levels kept in the progressive DC frame (finest first; each
+  level halves the preview resolution). `None` squeezes down to an 8x8 preview.
+  Used only with `progressive_dc`. Wired to `--progressive_dc_levels`.
+* `GroupOrder` enum (`Scanline` / `CenterFirst` / `Diagonals`) +
+  `EncodeConfig::group_order` / `with_group_order(GroupOrder)` — the codestream
+  order of the lossy VarDCT groups for progressive rendering. Default
+  `Scanline`. Wired to `--group_order`.
+
+**Encoder changes:**
+
+* SSIMULACRA2 moved to the external `ssimu2-lite` crate (a new dependency, like
+  the existing `cvvdp-lite`); the in-tree `ssimulacra2.rs` and its per-SIMD
+  variants were replaced by the shared `ssimu2-lite` implementation.
+* Internal reorganisation: `aq_blur.rs` / `aq_loop.rs` were folded into
+  `adaptive_quant.rs`, and several hot encode paths pass sample buffers by value
+  instead of by reference.
 
 ### v0.4.1 (2026-10-13)
 

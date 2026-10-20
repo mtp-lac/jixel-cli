@@ -2,7 +2,7 @@
 
 A Windows command-line adapter for the [jixel](https://github.com/awxkee/jixel)
 JPEG XL encoder library. The library is used **unmodified** as a crates.io
-dependency (`jixel 0.4.1`), and the command-line interface follows **libjxl's
+dependency (`jixel 0.4.2`), and the command-line interface follows **libjxl's
 `cjxl`**: same positionals, flag spellings, and default semantics wherever
 jixel's API can express them. See [docs/cjxl-alignment.md](<docs/cjxl-alignment.md>)
 for the full diff.
@@ -26,13 +26,15 @@ jixel-cli.exe photo.png out.jxl --fast-lossless
 jixel-cli.exe icon.png out.jxl --strip_alpha 2 --num_threads 4
 jixel-cli.exe hdr.jpg out.jxl -e 9 --arbiter cvvdp   # CVVDP-tuned lossy encode
 jixel-cli.exe wide.png out.jxl --coding-transform ycbcr
+jixel-cli.exe photo.png out.jxl --progressive_dc 1 --group_order center-first
+jixel-cli.exe photo.png out.jxl --progressive_dc 1 --progressive_dc_levels 2
 ```
 
 `OUTPUT` may be omitted (writes `INPUT.jxl`; cjxl requires it).
 
 ## Effort / speed tiers
 
-cjxl's `--effort` is a 1-10 scale; jixel 0.4.1 has **six** speed/density tiers,
+cjxl's `--effort` is a 1-10 scale; jixel 0.4.x has **six** speed/density tiers,
 each a strict superset of the tools of every faster one. `--effort` resolves
 onto all six:
 
@@ -65,6 +67,8 @@ range, **effort 9-10**.
 | `--allow_jpeg_reconstruction <0\|1>` | keep/omit the JBRD reconstruction box |
 | `-m, --modular <0\|1\|2>` | VarDCT / Modular / auto (2 = jixel both-arms) |
 | `-p, --progressive` | progressive encoding |
+| `--progressive_dc <0\|1>` | lossy VarDCT progressive DC frame; 1 = previews refine from 1:256 to 1:8 before AC (default off, lossy-only) |
+| `--group_order <scanline\|center-first\|diagonals>` | group storage order for progressive rendering (default scanline; `diagonals` is jixel-only) |
 | `--strip_alpha <-1\|0\|1\|2>` | alpha stripping mode (-1 = encoder chooses) |
 | `--faster_decoding <0..4>` | lossless decode-speed vs density |
 | `--num_threads <-1\|0\|N>` | -1 machine default, 0 = single-threaded |
@@ -83,8 +87,15 @@ mirror cjxl.
 `--lossless` (alias `-d 0`), `--fast-lossless`, `--splines`,
 `--learned-rate <0\|1>`, `--arbiter <ssimulacra2\|cvvdp>`,
 `--coding-transform <xyb\|ycbcr\|rgb>`,
+`--progressive_dc_levels <LEVELS>`,
 `--color-space <srgb\|srgb-linear\|display-p3\|bt2020-pq\|bt2020-hlg>`,
 `--icc-profile <FILE>`, `--orientation <1-8>`.
+
+`--progressive_dc_levels <LEVELS>` limits how many squeeze levels the
+`--progressive_dc 1` frame keeps (finest first; each level halves the preview
+resolution). Unset squeezes down to an 8x8 preview; values clamp to what the DC
+image allows. It is a jixel-only knob — cjxl's `--progressive_dc` has no level
+control — and it requires `--progressive_dc=1`.
 
 `--learned-rate` is the switch for jixel's learned rate pricing (default on;
 pass `0` to disable). It has no cjxl counterpart.
@@ -118,6 +129,100 @@ pixels, a color space, an alpha flag and `FlMeta`. It therefore **rejects**
 `--intensity_target`, `--num_threads`, `--splines`, `--arbiter` and
 `--coding-transform` instead of silently ignoring them; `--strip_alpha`,
 `--color-space`, `--icc-profile` and `--orientation` do apply.
+
+## What's new in jixel 0.4.2
+
+This project tracks upstream `awxkee/jixel` and ships it unmodified
+(jixel-cli upgraded `0.4.1` -> `0.4.2`).
+
+**New public API in 0.4.2, now exposed as flags:**
+
+- **`--progressive_dc <0|1>`** - upstream added `EncodeConfig::progressive_dc`
+  (`with_progressive_dc`): code the lossy VarDCT frame's 1:8 DC plane as its own
+  squeezed modular frame ahead of the main frame, so a decoder can show previews
+  refining from 1:256 to 1:8 before any AC data arrives. Costs some size; applies
+  to XYB frames without alpha only. This is the jixel equivalent of cjxl's
+  `--progressive_dc`.
+- **`--progressive_dc_levels <LEVELS>`** - `EncodeConfig::progressive_dc_levels`
+  (`with_progressive_dc_levels`): limit how many squeeze levels the progressive DC
+  frame keeps (finest first; each level halves the preview resolution). jixel-only
+  (cjxl has no level control). Requires `--progressive_dc=1`.
+- **`--group_order <scanline|center-first|diagonals>`** - upstream added the
+  `GroupOrder` enum and `EncodeConfig::group_order` (`with_group_order`): the order
+  in which a lossy VarDCT frame stores its groups for progressive rendering.
+  `scanline` (default) and `center-first` match cjxl's `--group_order=0/1`;
+  `diagonals` is a jixel extension.
+
+All three are **lossy-only** and are rejected (not silently ignored) at lossless
+distance, with `--fast-lossless`, and on the lossless-JPEG-transcode path.
+
+**Encoder changes that come along with the bump (no flag needed):**
+
+- **SSIMULACRA2 moved to the external `ssimu2-lite` crate.** jixel 0.4.1 built
+  SSIMULACRA2 in-tree; 0.4.2 uses the same `ssimu2-lite` dependency that already
+  supplies CVVDP (as `cvvdp-lite`), cutting in-tree code and unifying the metric
+  paths. The arbiter default and per-arbiter tuning rows are unchanged, so
+  default output remains equivalent to 0.4.1.
+- **Internal reorganisation / speedups.** The adaptive-quantisation modules were
+  consolidated (`aq_blur`/`aq_loop` folded into `adaptive_quant`) and several hot
+  encode paths pass sample buffers by value instead of by reference.
+
+## Default settings
+
+The CLI exposes cjxl-compatible defaults; where jixel's own `EncodeConfig` default
+differs, the CLI follows cjxl (noted below). The underlying jixel library defaults
+are documented in its `EncodeConfig::default()` and related `Default` impls.
+
+### Effective CLI defaults
+
+| Option | Default |
+|---|---|
+| `--distance` | 1.0 (JPEG/GIF input: 0.0 = lossless transcode) |
+| `--effort` | 7 → jixel `Speed::Fast` |
+| `--modular` | VarDCT (`LossyModular::Off`) |
+| `--progressive` | off |
+| `--progressive_dc` | off |
+| `--progressive_dc_levels` | unset (`None`, squeeze to 8x8 preview) |
+| `--group_order` | `scanline` |
+| `--patches` | on, auto-disabled with `--progressive` (cjxl rule) |
+| `--dots` | off |
+| `--splines` | off |
+| `--learned-rate` | on (jixel default) |
+| `--arbiter` | `ssimulacra2` (jixel default) |
+| `--coding-transform` | `xyb` (jixel default) |
+| `--faster_decoding` | 0 → `DecodingSpeed::Slow` |
+| `--strip_alpha` | -1 (encoder chooses) |
+| `--num_threads` | -1 (machine default) |
+| `--intensity_target` | 0 (auto) |
+| `--color-space` | `srgb` |
+
+### jixel library defaults (`EncodeConfig::default()`)
+
+| Field | Default |
+|---|---|
+| `distance` | 1.0 |
+| `speed` | `Speed::Fast` |
+| `decoding_speed` | `DecodingSpeed::Slow` |
+| `lossy_modular` | `LossyModular::Off` |
+| `arbiter` | `Arbiter::Ssimulacra2` |
+| `coding_transform` | `CodingTransform::Xyb` |
+| `progressive` / `progressive_dc` | false / false |
+| `progressive_dc_levels` | `None` (squeeze to 8x8 preview) |
+| `group_order` | `GroupOrder::Scanline` |
+| `patches` | false *(CLI turns on by default per cjxl)* |
+| `splines` / `dots` | false / false |
+| `learned_rate` | true |
+| `intensity_target` / `min_nits` | `None` / 0.0 |
+| `relative_to_max_display` / `linear_below` | false / 0.0 |
+| `fill_invisible` | true |
+| `orientation` | `Orientation::Normal` |
+| `num_threads` | machine parallel capacity |
+| `gain_map` | `None` |
+
+`JpegTranscodeConfig::default()` (the lossless-JPEG path): `jpeg_reconstruction=true`,
+`num_threads=1`, `speed=Speed::Fast`. `FlMeta::default()` (the fast-lossless path):
+sRGB (D65 / BT.709 / sRGB transfer / Relative intent), `alpha_premultiplied=false`,
+`orientation=Normal`.
 
 ## What's new in jixel 0.4.1
 
@@ -159,12 +264,13 @@ qualities").
   candidate ranking marginals still come from SSIMULACRA 2.
 
 Upstream knobs that still have no jixel-cli flag: `progressive_passes` /
-`progressive_shifts` (cjxl's `--progressive_ac`, `--qprogressive_ac`,
-`--progressive_dc`), `brotli_compression` (Brotli-compressed `brob` boxes),
-`fill_invisible`, CMYK input (`encode_image_cmyk*` / `InkConvention`), and the
-remaining tone-mapping fields `min_nits`, `relative_to_max_display`,
-`linear_below`. See [docs/cjxl-alignment.md](<docs/cjxl-alignment.md>) for the
-full cjxl comparison.
+`progressive_shifts` (cjxl's `--progressive_ac` and `--qprogressive_ac`;
+`--progressive_dc` is exposed via `--progressive_dc`), `brotli_compression`
+(Brotli-compressed `brob` boxes), `fill_invisible`, CMYK input
+(`encode_image_cmyk*` / `InkConvention`), and the remaining tone-mapping fields
+`min_nits`, `relative_to_max_display`, `linear_below`. See
+[docs/cjxl-alignment.md](<docs/cjxl-alignment.md>) for the full cjxl
+comparison.
 
 ## Supported inputs
 

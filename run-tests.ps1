@@ -60,6 +60,10 @@ Run-Case "cvvdp-xyb-e9"      @($img, "$dir\cvvdp-xyb-e9.jxl", "-e", "9", "--arbi
 Run-Case "ct-ycbcr"          @($img, "$dir\ct-ycbcr.jxl", "--coding-transform", "ycbcr")
 Run-Case "ct-rgb"            @($img, "$dir\ct-rgb.jxl", "--coding-transform", "rgb")
 Run-Case "ct-xyb"            @($img, "$dir\ct-xyb.jxl", "--coding-transform", "xyb")
+Run-Case "pdc-on"            @($img, "$dir\pdc-on.jxl", "--progressive_dc", "1")
+Run-Case "pdc-levels"        @($img, "$dir\pdc-levels.jxl", "--progressive_dc", "1", "--progressive_dc_levels", "2")
+Run-Case "go-center"         @($img, "$dir\go-center.jxl", "--group_order", "center-first")
+Run-Case "go-diag"           @($img, "$dir\go-diag.jxl", "--group_order", "diagonals")
 Run-Case "modular-lossy"     @($img, "$dir\modular-lossy.jxl", "-e", "9", "-m", "1")
 Run-Case "modular-auto"      @($img, "$dir\modular-auto.jxl", "-e", "9", "-m", "2")
 Run-Case "progressive"       @($img, "$dir\progressive.jxl", "-p")
@@ -146,6 +150,16 @@ Run-Case "err-ct-fl"            @($img, "$dir\neg26.jxl", "--coding-transform", 
 Run-Case "err-ct-jpeg"          @("test-images\rgb.jpg", "$dir\neg27.jxl", "--coding-transform", "rgb") -Fail
 Run-Case "err-arbiter-value"    @($img, "$dir\neg28.jxl", "--arbiter", "butteraugli") -Fail
 Run-Case "err-ct-value"         @($img, "$dir\neg29.jxl", "--coding-transform", "lab") -Fail
+
+# jixel 0.4.2 lossy-only controls (--progressive_dc, --progressive_dc_levels,
+# --group_order): reject where they cannot take effect instead of silently dropping
+Run-Case "err-pdc-lossless"   @($img, "$dir\neg30.jxl", "--progressive_dc", "1", "-d", "0") -Fail
+Run-Case "err-pdc-fl"         @($img, "$dir\neg31.jxl", "--progressive_dc", "1", "--fast-lossless") -Fail
+Run-Case "err-pdc-jpeg"       @("test-images\rgb.jpg", "$dir\neg32.jxl", "--progressive_dc", "1") -Fail
+Run-Case "err-pdc-levels-noflag" @($img, "$dir\neg33.jxl", "--progressive_dc_levels", "2") -Fail
+Run-Case "err-go-lossless"    @($img, "$dir\neg34.jxl", "--group_order", "diagonals", "--lossless") -Fail
+Run-Case "err-go-fl"          @($img, "$dir\neg35.jxl", "--group_order", "center-first", "--fast-lossless") -Fail
+Run-Case "err-go-value"       @($img, "$dir\neg36.jxl", "--group_order", "spiral") -Fail
 
 Write-Host ""
 Write-Host "Summary: $pass passed, $fail failed" -ForegroundColor $(if ($fail) { "Red" } else { "Green" })

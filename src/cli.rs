@@ -6,7 +6,10 @@
 use std::path::PathBuf;
 
 use clap::{ArgAction, Parser, ValueEnum};
-use jixel::{Arbiter, CodingTransform, ColorEncoding, DecodingSpeed, FlMeta, LossyModular, Speed};
+use jixel::{
+    Arbiter, CodingTransform, ColorEncoding, DecodingSpeed, FlMeta, GroupOrder, LossyModular,
+    Speed,
+};
 
 /// Parse a bounded float flag value with a cjxl-style message.
 fn bounded_f32(min: f32, max: f32) -> impl Fn(&str) -> Result<f32, String> + Clone {
@@ -99,6 +102,36 @@ pub struct Args {
     /// More progressive/responsive decoding.
     #[arg(short, long)]
     pub progressive: bool,
+
+    /// Progressive DC for lossy VarDCT: code the image's 1:8 DC plane as its
+    /// own squeezed modular frame ahead of the main frame, letting a decoder
+    /// show previews refining from 1:256 down to 1:8 before AC data arrives.
+    /// Costs some size; applies to XYB frames without alpha only. Defaults to
+    /// off. Lossy-only: rejected with --lossless / -d 0 / -q 100,
+    /// --fast-lossless and JPEG transcoding.
+    #[arg(
+        long = "progressive_dc",
+        value_name = "0|1",
+        value_parser = clap::value_parser!(u32).range(0..=1)
+    )]
+    pub progressive_dc: Option<u32>,
+
+    /// Number of squeeze levels kept in the progressive DC frame (finest
+    /// first; each level halves the preview resolution). Unset squeezes down
+    /// to an 8x8 preview; values clamp to what the DC image allows. Requires
+    /// --progressive_dc=1. Lossy-only.
+    #[arg(
+        long = "progressive_dc_levels",
+        value_name = "LEVELS",
+        value_parser = clap::value_parser!(u32).range(1..)
+    )]
+    pub progressive_dc_levels: Option<u32>,
+
+    /// Order in which a lossy VarDCT frame stores its groups, for progressive
+    /// rendering (default scanline). Lossy-only: rejected with --lossless /
+    /// -d 0 / -q 100, --fast-lossless and JPEG transcoding.
+    #[arg(long = "group_order", value_enum, default_value = "scanline")]
+    pub group_order: GroupOrderArg,
 
     /// Alpha stripping mode:
     ///   -1 = encoder chooses (strip if empty for lossy, keep for lossless)
@@ -328,6 +361,31 @@ impl From<CodingTransformArg> for CodingTransform {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+pub enum GroupOrderArg {
+    /// Row by row from the top left (default; cjxl `--group_order=0`).
+    #[value(name = "scanline", alias = "0")]
+    Scanline,
+    /// Rings around the image center, swept clockwise from the top (cjxl
+    /// `--group_order=1`).
+    #[value(name = "center-first", alias = "center_first", alias = "1")]
+    CenterFirst,
+    /// Corner-to-corner diagonals first, then bands farther out (jixel-only
+    /// extension; no cjxl equivalent).
+    #[value(name = "diagonals", alias = "2")]
+    Diagonals,
+}
+
+impl From<GroupOrderArg> for GroupOrder {
+    fn from(v: GroupOrderArg) -> Self {
+        match v {
+            GroupOrderArg::Scanline => GroupOrder::Scanline,
+            GroupOrderArg::CenterFirst => GroupOrder::CenterFirst,
+            GroupOrderArg::Diagonals => GroupOrder::Diagonals,
+        }
+    }
+}
+
 impl Args {
     /// cjxl's `--effort` default is 7 (jixel `Speed::Fast`).
     pub fn effort(&self) -> u32 {
@@ -402,6 +460,17 @@ impl Args {
     /// explicitly selected YCbCr or Rgb.
     pub fn coding_transform_is_default(&self) -> bool {
         self.coding_transform == CodingTransformArg::Xyb
+    }
+
+    /// cjxl `--progressive_dc`: 1 = enable the progressive DC frame.
+    pub fn progressive_dc_enabled(&self) -> bool {
+        self.progressive_dc.map(|v| v == 1).unwrap_or(false)
+    }
+
+    /// jixel-only `--group_order`: default scanline. `false` means the user
+    /// explicitly selected center-first or diagonals.
+    pub fn group_order_is_default(&self) -> bool {
+        self.group_order == GroupOrderArg::Scanline
     }
 
     /// Validate that gain-map-only options are not used without --gain-map,

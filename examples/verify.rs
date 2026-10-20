@@ -218,6 +218,29 @@ const CASES: &[Case] = &[
         jxl: "test-output/ct-xyb.jxl",
         expect: Expect::Report,
     },
+    // jixel 0.4.2 lossy controls: --progressive_dc / --progressive_dc_levels
+    // (progressive DC frame) and --group_order (center-first / diagonals) must
+    // all produce decodable streams.
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/pdc-on.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/pdc-levels.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/go-center.jxl",
+        expect: Expect::Report,
+    },
+    Case {
+        src: "test-images/rgb.png",
+        jxl: "test-output/go-diag.jxl",
+        expect: Expect::Report,
+    },
     // effort tier boundaries must all produce decodable lossy streams
     Case {
         src: "test-images/rgb.png",

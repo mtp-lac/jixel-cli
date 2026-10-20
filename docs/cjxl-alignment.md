@@ -2,7 +2,7 @@
 
 Review of `jixel-cli` against **libjxl's `cjxl`** (main branch,
 `tools/cjxl_main.cc`), 2026-10. Goal: same invocation syntax and flag
-semantics for everything the jixel 0.4.1 public API can express. jixel-only
+semantics for everything the jixel 0.4.2 public API can express. jixel-only
 extensions are listed separately; flags jixel cannot implement are *not*
 silently accepted.
 
@@ -30,6 +30,8 @@ jixel-cli  [OPTIONS] INPUT [OUTPUT]
 | `-v, --verbose` (repeatable) | extra info | ✓ (counted) |
 | `--strip_alpha <-1\|0\|1\|2>` | -1 encoder chooses (lossy: strip if empty; lossless: keep), 0 keep, 1 strip, 2 strip-if-opaque | ✓ incl. the empty-alpha scan |
 | `-p, --progressive` | flag | ✓; like cjxl it also disables `patches` when unspecified |
+| `--progressive_dc <0\|1>` | number of progressive-DC frames (-1/0/1/2) | ✓ partial: jixel exposes a bool (progressive DC frame on/off), not cjxl's -1..2 frame count; `1` = on, `0`/unset = off (matches jixel's default). Lossy varDCT-only (XYB frames without alpha). The finer cjxl `1`/`2` distinction maps to `--progressive_dc_levels` |
+| `--group_order <0\|1>` | 0 scanline, 1 center-first (default 0) | ✓ via `--group_order <scanline\|center-first\|diagonals>`; `diagonals` is a jixel extension (no cjxl equivalent) |
 | `-m, --modular <0\|1>` | 0 VarDCT, 1 Modular (lossy) | ✓; extension value `2`/`auto` = jixel's both-arms heuristic |
 | `-j, --lossless_jpeg <0\|1>` (default 1 for JPEG magic) | implicit JPEG transcode; forced off for non-JPEG; error if combined with non-zero distance | ✓ identical auto-detect (FFD8 magic), identical note "Implicit-default for JPEG is lossless-transcoding...", identical conflict error |
 | `--allow_jpeg_reconstruction <0\|1>` | store/drop JBRD reconstruction box | ✓ (dropping yields a bare codestream, like cjxl) |
@@ -47,6 +49,7 @@ jixel-cli  [OPTIONS] INPUT [OUTPUT]
 `--lossless` (alias of `-d 0`), `--fast-lossless`, `--splines`,
 `--learned-rate <0\|1>`, `--arbiter <ssimulacra2\|cvvdp>`,
 `--coding-transform <xyb\|ycbcr\|rgb>`,
+`--progressive_dc_levels <LEVELS>`,
 `--color-space <srgb\|srgb-linear\|display-p3\|bt2020-pq\|bt2020-hlg>`,
 `--icc-profile <FILE>`, `--orientation <1-8>`.
 
@@ -71,6 +74,16 @@ cannot take effect: with `--lossless` / `-d 0` / `-q 100`, with
 only changes the output at effort 9-10 (`Speed::Slow`), matching
 `--learned-rate`: at efforts 1-8 the faster tiers never consult the metric, so
 the streams are byte-identical.
+
+`--progressive_dc <0|1>` (jixel 0.4.2 `EncodeConfig::progressive_dc`) turns on
+the lossy VarDCT progressive DC frame. `--progressive_dc_levels <LEVELS>`
+(jixel-only) limits how many squeeze levels that frame keeps (finest first; each
+level halves the preview resolution); unset squeezes to an 8x8 preview, and it
+requires `--progressive_dc=1`. `--group_order <scanline|center-first|diagonals>`
+(jixel 0.4.2 `GroupOrder`) selects the codestream order of the lossy VarDCT
+groups. All three are **lossy-only**: like `--arbiter` / `--coding-transform`
+they are rejected rather than ignored at lossless, with `--fast-lossless`, and on
+the lossless-JPEG-transcode path.
 
 `--exif <FILE>` and `--xmp <FILE>` embed raw EXIF/TIFF and XMP payloads in
 `Exif` / `xml ` container boxes (jixel `EncodeConfig::with_exif` /
@@ -100,7 +113,7 @@ accepted, and an unknown flag is not silently ignored either - it exits 1.
 
 | cjxl flag | jixel API | Notes |
 |-----------|-----------|-------|
-| `--progressive_ac`, `--qprogressive_ac`, `--progressive_dc` | `progressive_passes: Option<u32>`, `progressive_shifts: Option<Vec<u32>>` | jixel takes a pass count or an explicit per-pass coefficient-shift schedule; cjxl's three AC/DC shift knobs are a coarser projection onto it |
+| `--progressive_ac`, `--qprogressive_ac` | `progressive_passes: Option<u32>`, `progressive_shifts: Option<Vec<u32>>` | jixel takes a pass count or an explicit per-pass coefficient-shift schedule; cjxl's two AC shift knobs are a coarser projection onto it. (`--progressive_dc` is exposed separately, see the implemented-flag table.) |
 | `--compress_boxes`, `--brotli_effort` | `brotli_compression: Option<Arc<dyn BrotliCompression>>` | jixel's hook is for Brotli-compressing EXIF/XMP (`brob`) boxes with a caller-provided compressor; cjxl's effort number and general box policy have no direct equivalent |
 | `--min_nits`, `--relative_to_max_display`, `--linear_below` | `min_nits`, `relative_to_max_display`, `linear_below` | Tone-mapping fields exist; only `--intensity_target` is exposed |
 
@@ -144,6 +157,12 @@ main use case for it in cjxl.
   neighbouring efforts (4–7 all map to `Fast`).
 * `--faster_decoding`: 3 levels, not 5.
 * Container cannot be forced (`--container=1` errors).
+* Defaults: where jixel's `EncodeConfig::default()` differs from cjxl, the CLI
+  follows cjxl. Notably jixel's `patches` default is off, while the CLI enables
+  patches by default (auto-disabled with `--progressive`, as cjxl). The
+  jixel-side defaults (`--learned-rate` on, `--arbiter ssimulacra2`,
+  `--coding-transform xyb`, `--group_order scanline`, `--progressive_dc` off)
+  are used as-is. Full tables in README "Default settings".
 
 ## `--fast-lossless` (jixel extension) accepts only metadata
 
