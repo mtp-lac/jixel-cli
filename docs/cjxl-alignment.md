@@ -162,7 +162,7 @@ main use case for it in cjxl.
   patches by default (auto-disabled with `--progressive`, as cjxl). The
   jixel-side defaults (`--learned-rate` on, `--arbiter ssimulacra2`,
   `--coding-transform xyb`, `--group_order scanline`, `--progressive_dc` off)
-  are used as-is. Full tables in README "Default settings".
+  are used as-is. Full tables in [docs/default-settings.md](<default-settings.md>).
 
 ## `--fast-lossless` (jixel extension) accepts only metadata
 
