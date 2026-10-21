@@ -112,7 +112,7 @@ pixels, a color space, an alpha flag and `FlMeta`. It therefore **rejects**
 
 | Topic | Document |
 |-------|----------|
-| Effort / speed tiers | [docs/effort.md](<docs/effort.md>) |
+| Effort / speed tiers, per-mode meaning, feature gating | [docs/effort.md](<docs/effort.md>) |
 | Default settings (CLI and jixel library) | [docs/default-settings.md](<docs/default-settings.md>) |
 | Release notes (jixel 0.4.1 & 0.4.2) | [docs/release-notes.md](<docs/release-notes.md>) |
 | Supported input formats & bit depths | [docs/supported-inputs.md](<docs/supported-inputs.md>) |
