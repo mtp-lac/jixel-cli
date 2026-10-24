@@ -1,6 +1,6 @@
 # Effort / speed tiers
 
-cjxl's `--effort` is a 1–10 scale; jixel 0.4.x has **six** speed/density tiers,
+cjxl's `--effort` is a 1–10 scale; jixel 0.5.x has **six** speed/density tiers,
 each a strict superset of the tools of every faster one. `--effort` resolves
 onto all six:
 

@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] - 2026-10-24
+
+### Changed
+- Updated jixel dependency from 0.4.2 to 0.5.0 (latest upstream release)
+- Public API unchanged from 0.4.2: same flags and defaults; the bump ships
+  upstream's internal encoder improvements (new DCT 32x8 / 8x32 transform
+  selection, improved ink layers and region frames, a dequant-bias fix, and
+  general speed/density work), so encoded output may differ from 0.4.2
+- Upstream moved the perceptual-metric crates (`cvvdp-lite`,
+  `ssimu2-lite`) behind a new `extraslow` Cargo feature; it is part of
+  jixel's default features, so `--arbiter ssimulacra2|cvvdp` behaviour is
+  unchanged
+- Refreshed README, docs/release-notes.md and docs/cjxl-alignment.md for
+  jixel 0.5.0
+
 ## [0.4.2] - 2026-10-20
 
 ### Changed

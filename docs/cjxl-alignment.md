@@ -2,7 +2,7 @@
 
 Review of `jixel-cli` against **libjxl's `cjxl`** (main branch,
 `tools/cjxl_main.cc`), 2026-10. Goal: same invocation syntax and flag
-semantics for everything the jixel 0.4.2 public API can express. jixel-only
+semantics for everything the jixel 0.5.0 public API can express. jixel-only
 extensions are listed separately; flags jixel cannot implement are *not*
 silently accepted.
 

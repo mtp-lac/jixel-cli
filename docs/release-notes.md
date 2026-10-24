@@ -1,5 +1,30 @@
 # Release notes
 
+## jixel 0.5.0
+
+This project tracks upstream `awxkee/jixel` and ships it unmodified
+(jixel-cli upgraded `0.4.2` -> `0.5.0`).
+
+**No new public API in 0.5.0, so no new flags.** The `EncodeConfig` field set,
+the `Speed`/`Arbiter`/`GroupOrder`/`CodingTransform` enums and every exported
+encoder function are unchanged from 0.4.2; this is a drop-in dependency bump.
+
+**Encoder changes that come along with the bump (no flag needed):**
+
+- **New transform selection.** Upstream added DCT 32x8 / 8x32 transforms to the
+  lossy VarDCT arm.
+- **Improved ink layers and region frames.** The special-case layer coders got
+  reworked; very-low-bit-depth / sparse content can encode differently.
+- **Fixes and tuning.** A dequant-bias correction plus assorted speed/density
+  tweaks across the modular and VarDCT paths.
+- **Feature restructuring.** `cvvdp-lite` and `ssimu2-lite` (the
+  SSIMULACRA 2 / ColorVideoVDP metric crates) moved behind a new `extraslow`
+  Cargo feature, which remains part of jixel's default features — so
+  `--arbiter ssimulacra2|cvvdp` works exactly as before.
+
+Because the encoder internals changed, encoded output (byte sizes / streams) can
+differ from jixel 0.4.2; this is expected.
+
 ## jixel 0.4.2
 
 This project tracks upstream `awxkee/jixel` and ships it unmodified
