@@ -1,7 +1,7 @@
 [package]
 name = "jixel-cli"
 version = "0.2.0"
-edition = "2026"
+edition = "2024"
 description = "CLI adapter for jixel JPEG XL encoder"
 license = "BSD-3-Clause OR Apache-2.0"
 
