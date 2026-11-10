@@ -1,5 +1,35 @@
 # Release notes
 
+## jixel 0.5.7
+
+This project tracks upstream `awxkee/jixel` and ships it unmodified
+(jixel-cli upgraded `0.5.0` -> `0.5.7`).
+
+**No new public API in 0.5.1–0.5.7, so no new flags.** The `EncodeConfig`
+field set, the `Speed`/`Arbiter`/`GroupOrder`/`CodingTransform` enums and
+every exported encoder function are unchanged from 0.5.0; this is a drop-in
+dependency bump.
+
+**Encoder changes that come along with the bump (no flag needed):**
+
+- **0.5.1** — crossing dynamic-programming for coefficient selection, DC
+  rounding, better LZ77 and tree pruning, palette sorting, smarter quant
+  refinement, spline/dot/patch path improvements, RDOQ polishing, better JPEG
+  transcoding, feature rebalancing and crossing-CFL.
+- **0.5.2** — bugfixes and improvements.
+- **0.5.3** — better glyphs, K-best selection polishing, optimized trellis,
+  reduced RAM use, better small buffers and EPF, a quantization-selection
+  improvement, UHDR transcoding support, better splines/alpha and a large
+  lossy-modular rework.
+- **0.5.4** — removed gradient (encoder internals).
+- **0.5.5** — lossy-modular polishing and refactor, better alpha.
+- **0.5.6** — K and A selection, hybrid trees, "V squeeze" on the ExtraSlow
+  tier, a better RCT and improved weighting.
+- **0.5.7** — optimizations.
+
+Because the encoder internals changed, encoded output (byte sizes / streams)
+can differ from jixel 0.5.0; this is expected.
+
 ## jixel 0.5.0
 
 This project tracks upstream `awxkee/jixel` and ships it unmodified

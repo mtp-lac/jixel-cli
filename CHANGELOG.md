@@ -5,6 +5,18 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.7] - 2026-11-10
+
+### Changed
+- Updated jixel dependency from 0.5.0 to 0.5.7 (latest upstream release)
+- Public API unchanged from 0.5.0: same flags and defaults; the bump ships
+  upstream's encoder work across 0.5.1–0.5.7 (RDOQ/trellis polishing, better
+  LZ77 and tree pruning, improved lossy modular and alpha, K-best selection,
+  hybrid trees, UHDR transcoding, and speed/density optimizations), so encoded
+  output may differ from 0.5.0
+- Refreshed README, docs/release-notes.md and docs/cjxl-alignment.md for
+  jixel 0.5.7
+
 ## [0.5.0] - 2026-10-24
 
 ### Changed
