@@ -25,12 +25,28 @@ jobs:
 
       - name: Check upstream jixel release
         id: check
+        env:
+          # GITHUB_TOKEN is only available to steps that declare it explicitly;
+          # `set -u` aborts the step otherwise. Read-only, public repo.
+          GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
         run: |
           set -euo pipefail
 
           # Latest published jixel release (tags are bare semver, e.g. 0.5.7).
-          UPSTREAM=$(curl -fsSL -H "Authorization: Bearer $GITHUB_TOKEN" \
-            https://api.github.com/repos/awxkee/jixel/releases/latest \
+          # Authenticated when a token is present (higher rate limit); if the
+          # token is rejected, fall back to anonymous access rather than
+          # failing the poll outright.
+          api_get() {
+            if [ -n "${GH_API_TOKEN:-}" ]; then
+              curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
+                -H "Authorization: Bearer ${GH_API_TOKEN}" "$1" && return 0
+              echo "warning: authenticated request failed; retrying anonymously" >&2
+            fi
+            curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$1"
+          }
+
+          UPSTREAM=$(api_get https://api.github.com/repos/awxkee/jixel/releases/latest \
             | jq -r '.tag_name // empty')
           if [ -z "$UPSTREAM" ]; then
             echo "action=skip" >> "$GITHUB_OUTPUT"
@@ -57,7 +73,7 @@ jobs:
           }
 
           ACTION=skip
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
             # Manual runs always build and release the current state.
             ACTION=release
           elif [ -n "$CURRENT" ] && [ "$UPSTREAM" != "$CURRENT" ] && \
@@ -73,9 +89,10 @@ jobs:
 
       - name: Sync jixel dependency
         if: steps.check.outputs.action == 'release'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
         run: |
           set -euo pipefail
-          VERSION="${{ steps.check.outputs.version }}"
           CURRENT=$(sed -nE 's/^jixel\s*=\s*\{[^}]*version\s*=\s*"([^"]+)".*/\1/p' Cargo.toml | head -n1)
           if [ -n "$CURRENT" ] && [ "$VERSION" != "$CURRENT" ]; then
             sed -iE "s/^(jixel\s*=\s*\{[^}]*version\s*=\s*\")[^\"]+(\".*)$/\1${VERSION}\2/" Cargo.toml
@@ -102,8 +119,11 @@ jobs:
           if ($content -match 'jixel\s*=\s*\{[^}]*version\s*=\s*"([^"]+)"') {
             $ver = $matches[1]
             Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$ver"
+            Write-Host "Extracted jixel version: $ver"
+          } else {
+            Write-Error "Could not find the jixel dependency version in Cargo.toml"
+            exit 1
           }
-          Write-Host "Extracted jixel version: ${{ steps.jixel.outputs.version }}"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
