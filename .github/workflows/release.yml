@@ -233,8 +233,14 @@ jobs:
           JXEL_VERSION="${{ needs.build.outputs.jixel_version }}"
           TAG="v${JXEL_VERSION}"
 
-          # Compare against the previous tag if it exists.
-          PREV_TAG=$(git describe --tags --abbrev=0 ${TAG}^ 2>/dev/null || echo "")
+          # Compare against the most recent existing release tag. ${TAG} does
+          # not exist yet (it is created by the next step), so ${TAG}^ would
+          # never resolve; list only vX.Y.Z tags and take the highest one
+          # that is not the tag being released.
+          PREV_TAG=$(git tag --list 'v[0-9]*' \
+            | grep -vx "$TAG" \
+            | sort -V \
+            | tail -n1 || echo "")
           if [ -n "$PREV_TAG" ]; then
             CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s")
           else
