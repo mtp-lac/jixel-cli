@@ -93,9 +93,40 @@ jobs:
           VERSION: ${{ steps.check.outputs.version }}
         run: |
           set -euo pipefail
-          CURRENT=$(sed -nE 's/^jixel\s*=\s*\{[^}]*version\s*=\s*"([^"]+)".*/\1/p' Cargo.toml | head -n1)
+
+          # Read the jixel version currently pinned in Cargo.toml.
+          current_version() {
+            sed -nE 's/^jixel[[:space:]]*=[[:space:]]*\{[^}]*version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' Cargo.toml | head -n1
+          }
+
+          CURRENT=$(current_version)
           if [ -n "$CURRENT" ] && [ "$VERSION" != "$CURRENT" ]; then
-            sed -iE "s/^(jixel\s*=\s*\{[^}]*version\s*=\s*\")[^\"]+(\".*)$/\1${VERSION}\2/" Cargo.toml
+            # Rewrite the version value only; the rest of the line is preserved.
+            #
+            # Two GNU sed pitfalls are avoided deliberately:
+            #
+            #  1. A quote must not be backslash-escaped inside a bracket
+            #     expression. Writing [^\"] makes GNU sed abort with
+            #     "Invalid preceding regular expression". The quote is held in
+            #     the shell variable q and spliced in unescaped.
+            #
+            #  2. A backreference must never be followed directly by a digit.
+            #     Using \1${VERSION} would give \10.5.9, which sed reads as
+            #     backreference \10. Here the only backreference (\1) is
+            #     followed by a literal quote, so the substitution is
+            #     unambiguous for any version number.
+            q='"'
+            re='s/^(jixel[[:space:]]*=[[:space:]]*\{[^}]*version[[:space:]]*=[[:space:]]*)'"${q}"'[^'"${q}"']+'"${q}"'/\1'${q}${VERSION}${q}'/'
+            sed -E -i -e "${re}" Cargo.toml
+
+            # Fail loudly rather than committing an unchanged Cargo.toml.
+            UPDATED=$(current_version)
+            if [ "$UPDATED" != "$VERSION" ]; then
+              echo "error: failed to update jixel version in Cargo.toml (still '${UPDATED}', wanted '${VERSION}')" >&2
+              exit 1
+            fi
+            echo "Updated jixel dependency: ${CURRENT} -> ${UPDATED}"
+
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add Cargo.toml
