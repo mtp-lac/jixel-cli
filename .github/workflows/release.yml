@@ -141,16 +141,34 @@ jobs:
     outputs:
       jixel_version: ${{ steps.jixel.outputs.version }}
     steps:
+      # Check out the latest main, not the commit this run started from.
+      # check-upstream may have pushed a "Update to jixel X" commit, and the
+      # build must use that synced Cargo.toml; otherwise the release is
+      # published under the previous version's tag.
       - uses: actions/checkout@v4
+        with:
+          ref: main
 
       - name: Extract jixel version
         id: jixel
+        env:
+          # The version that check-upstream resolved (and synced Cargo.toml to).
+          EXPECTED_VERSION: ${{ needs.check-upstream.outputs.version }}
         run: |
           $content = Get-Content Cargo.toml -Raw
           if ($content -match 'jixel\s*=\s*\{[^}]*version\s*=\s*"([^"]+)"') {
             $ver = $matches[1]
-            Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$ver"
             Write-Host "Extracted jixel version: $ver"
+            # This job checks out a commit snapshot. If that snapshot predates
+            # the "Sync jixel dependency" commit, Cargo.toml still carries the
+            # old version, and publishing under it would reuse the previous
+            # tag instead of creating the new release. Fail rather than ship a
+            # mislabelled build.
+            if ($env:EXPECTED_VERSION -and $ver -ne $env:EXPECTED_VERSION) {
+              Write-Error "Cargo.toml pins jixel $ver but the release is for $($env:EXPECTED_VERSION); the synced commit was not checked out."
+              exit 1
+            }
+            Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$ver"
           } else {
             Write-Error "Could not find the jixel dependency version in Cargo.toml"
             exit 1
@@ -195,7 +213,13 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
+      # Full history and tags are required: the changelog compares against the
+      # previous release tag, which a shallow single-commit clone cannot see.
       - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Download artifact
         uses: actions/download-artifact@v4
