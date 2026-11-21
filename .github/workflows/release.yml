@@ -2,177 +2,130 @@ name: Release
 
 on:
   workflow_dispatch:
+    inputs:
+      channel:
+        description: Release channel
+        type: choice
+        options:
+          - stable
+          - nightly
+        default: stable
   schedule:
-    # GitHub Actions cannot subscribe to another repository's events, so this
-    # polls upstream awxkee/jixel and only runs the release pipeline when a
-    # newer jixel version than the one pinned in Cargo.toml is published.
+    # Poll stable upstream releases every three hours; publish nightly daily.
     - cron: '0 */3 * * *'
+    - cron: '30 0 * * *'
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  check-upstream:
+  prepare:
     runs-on: ubuntu-latest
     outputs:
-      action: ${{ steps.check.outputs.action }}
-      version: ${{ steps.check.outputs.version }}
+      action: ${{ steps.prepare.outputs.action }}
+      channel: ${{ steps.prepare.outputs.channel }}
+      version: ${{ steps.prepare.outputs.version }}
+      sha: ${{ steps.prepare.outputs.sha }}
     steps:
-      - uses: actions/checkout@v4
-
-      - name: Check upstream jixel release
-        id: check
-        env:
-          # GITHUB_TOKEN is only available to steps that declare it explicitly;
-          # `set -u` aborts the step otherwise. Read-only, public repo.
-          GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EVENT_NAME: ${{ github.event_name }}
-        run: |
-          set -euo pipefail
-
-          # Latest published jixel release (tags are bare semver, e.g. 0.5.7).
-          # Authenticated when a token is present (higher rate limit); if the
-          # token is rejected, fall back to anonymous access rather than
-          # failing the poll outright.
-          api_get() {
-            if [ -n "${GH_API_TOKEN:-}" ]; then
-              curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
-                -H "Authorization: Bearer ${GH_API_TOKEN}" "$1" && return 0
-              echo "warning: authenticated request failed; retrying anonymously" >&2
-            fi
-            curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$1"
-          }
-
-          UPSTREAM=$(api_get https://api.github.com/repos/awxkee/jixel/releases/latest \
-            | jq -r '.tag_name // empty')
-          if [ -z "$UPSTREAM" ]; then
-            echo "action=skip" >> "$GITHUB_OUTPUT"
-            echo "version=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          UPSTREAM=${UPSTREAM#v}
-
-          # Version currently pinned in Cargo.toml.
-          CURRENT=$(sed -nE 's/^jixel\s*=\s*\{[^}]*version\s*=\s*"([^"]+)".*/\1/p' Cargo.toml | head -n1)
-
-          newer() {
-            local x y x1 x2 x3 y1 y2 y3
-            x="${1//[^0-9.]/}"
-            y="${2//[^0-9.]/}"
-            IFS=. read -r x1 x2 x3 <<< "$x"
-            IFS=. read -r y1 y2 y3 <<< "$y"
-            x1=${x1:-0}; x2=${x2:-0}; x3=${x3:-0}
-            y1=${y1:-0}; y2=${y2:-0}; y3=${y3:-0}
-            [ "$x1" -gt "$y1" ] && return 0
-            [ "$x1" -eq "$y1" ] && [ "$x2" -gt "$y2" ] && return 0
-            [ "$x1" -eq "$y1" ] && [ "$x2" -eq "$y2" ] && [ "$x3" -gt "$y3" ] && return 0
-            return 1
-          }
-
-          ACTION=skip
-          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
-            # Manual runs always build and release the current state.
-            ACTION=release
-          elif [ -n "$CURRENT" ] && [ "$UPSTREAM" != "$CURRENT" ] && \
-               newer "$UPSTREAM" "$CURRENT"; then
-            # Upstream published something newer; skip if we already released it.
-            if ! git ls-remote --tags origin "refs/tags/v${UPSTREAM}" | grep -q .; then
-              ACTION=release
-            fi
-          fi
-
-          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
-          echo "version=$UPSTREAM" >> "$GITHUB_OUTPUT"
-
-      - name: Sync jixel dependency
-        if: steps.check.outputs.action == 'release'
-        env:
-          VERSION: ${{ steps.check.outputs.version }}
-        run: |
-          set -euo pipefail
-
-          # Read the jixel version currently pinned in Cargo.toml.
-          current_version() {
-            sed -nE 's/^jixel[[:space:]]*=[[:space:]]*\{[^}]*version[[:space:]]*=[[:space:]]*"([^"]+)".*/\1/p' Cargo.toml | head -n1
-          }
-
-          CURRENT=$(current_version)
-          if [ -n "$CURRENT" ] && [ "$VERSION" != "$CURRENT" ]; then
-            # Rewrite the version value only; the rest of the line is preserved.
-            #
-            # Two GNU sed pitfalls are avoided deliberately:
-            #
-            #  1. A quote must not be backslash-escaped inside a bracket
-            #     expression. Writing [^\"] makes GNU sed abort with
-            #     "Invalid preceding regular expression". The quote is held in
-            #     the shell variable q and spliced in unescaped.
-            #
-            #  2. A backreference must never be followed directly by a digit.
-            #     Using \1${VERSION} would give \10.5.9, which sed reads as
-            #     backreference \10. Here the only backreference (\1) is
-            #     followed by a literal quote, so the substitution is
-            #     unambiguous for any version number.
-            q='"'
-            re='s/^(jixel[[:space:]]*=[[:space:]]*\{[^}]*version[[:space:]]*=[[:space:]]*)'"${q}"'[^'"${q}"']+'"${q}"'/\1'${q}${VERSION}${q}'/'
-            sed -E -i -e "${re}" Cargo.toml
-
-            # Fail loudly rather than committing an unchanged Cargo.toml.
-            UPDATED=$(current_version)
-            if [ "$UPDATED" != "$VERSION" ]; then
-              echo "error: failed to update jixel version in Cargo.toml (still '${UPDATED}', wanted '${VERSION}')" >&2
-              exit 1
-            fi
-            echo "Updated jixel dependency: ${CURRENT} -> ${UPDATED}"
-
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add Cargo.toml
-            git commit -m "Update to jixel ${VERSION}"
-            git push origin HEAD:main
-          fi
-
-  build:
-    needs: check-upstream
-    if: needs.check-upstream.outputs.action == 'release'
-    runs-on: windows-latest
-    outputs:
-      jixel_version: ${{ steps.jixel.outputs.version }}
-    steps:
-      # Check out the latest main, not the commit this run started from.
-      # check-upstream may have pushed a "Update to jixel X" commit, and the
-      # build must use that synced Cargo.toml; otherwise the release is
-      # published under the previous version's tag.
       - uses: actions/checkout@v4
         with:
           ref: main
 
-      - name: Extract jixel version
-        id: jixel
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Resolve release version
+        id: prepare
         env:
-          # The version that check-upstream resolved (and synced Cargo.toml to).
-          EXPECTED_VERSION: ${{ needs.check-upstream.outputs.version }}
+          GH_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EVENT_NAME: ${{ github.event_name }}
+          SCHEDULE: ${{ github.event.schedule }}
+          REQUESTED_CHANNEL: ${{ inputs.channel }}
         run: |
-          $content = Get-Content Cargo.toml -Raw
-          if ($content -match 'jixel\s*=\s*\{[^}]*version\s*=\s*"([^"]+)"') {
-            $ver = $matches[1]
-            Write-Host "Extracted jixel version: $ver"
-            # This job checks out a commit snapshot. If that snapshot predates
-            # the "Sync jixel dependency" commit, Cargo.toml still carries the
-            # old version, and publishing under it would reuse the previous
-            # tag instead of creating the new release. Fail rather than ship a
-            # mislabelled build.
-            if ($env:EXPECTED_VERSION -and $ver -ne $env:EXPECTED_VERSION) {
-              Write-Error "Cargo.toml pins jixel $ver but the release is for $($env:EXPECTED_VERSION); the synced commit was not checked out."
-              exit 1
+          set -euo pipefail
+          CHANNEL=${REQUESTED_CHANNEL:-stable}
+          if [ "$SCHEDULE" = '30 0 * * *' ]; then
+            CHANNEL=nightly
+          fi
+          VERSION=$(python .github/scripts/version.py)
+          ACTION=release
+
+          if [ "$CHANNEL" = stable ]; then
+            api_get() {
+              if [ -n "${GH_API_TOKEN:-}" ]; then
+                curl -fsSL --retry 2 --retry-delay 2 --retry-all-errors \
+                  -H "Authorization: Bearer ${GH_API_TOKEN}" "$1" && return 0
+                echo "warning: authenticated request failed; retrying anonymously" >&2
+              fi
+              curl -fsSL --retry 3 --retry-delay 2 --retry-all-errors "$1"
             }
-            Add-Content -Path $env:GITHUB_OUTPUT -Value "version=$ver"
-          } else {
-            Write-Error "Could not find the jixel dependency version in Cargo.toml"
-            exit 1
-          }
+
+            UPSTREAM=$(api_get https://api.github.com/repos/awxkee/jixel/releases/latest \
+              | jq -r '.tag_name // empty')
+            if [ -z "$UPSTREAM" ]; then
+              echo "error: upstream has no stable release tag" >&2
+              exit 1
+            fi
+            UPSTREAM=${UPSTREAM#v}
+            # Validate and compare stable semver before changing the manifest.
+            python - "$VERSION" "$UPSTREAM" <<'PY'
+          import re
+          import sys
+          current, upstream = sys.argv[1:]
+          if not re.fullmatch(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)", upstream):
+              sys.exit(f"Invalid upstream stable version: {upstream}")
+          if tuple(map(int, upstream.split('.'))) < tuple(map(int, current.split('.'))):
+              sys.exit(f"Upstream {upstream} is older than the pinned version {current}")
+          PY
+            VERSION=$UPSTREAM
+            if [ "$EVENT_NAME" != workflow_dispatch ] && \
+               git ls-remote --exit-code --tags origin "refs/tags/v${VERSION}" > /dev/null; then
+              ACTION=skip
+            fi
+
+            if [ "$ACTION" = release ]; then
+              python .github/scripts/version.py --sync "$VERSION"
+              if ! git diff --quiet -- Cargo.toml; then
+                git config user.name "github-actions[bot]"
+                git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+                git add Cargo.toml
+                git commit -m "Update CLI and jixel to ${VERSION}"
+                git push origin HEAD:main
+              fi
+            fi
+          fi
+
+          echo "action=$ACTION" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: prepare
+    if: needs.prepare.outputs.action == 'release'
+    runs-on: windows-latest
+    steps:
+      # Build exactly the commit prepared above, including any version sync.
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.prepare.outputs.sha }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Check package and library versions
+        env:
+          EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
+        run: python .github/scripts/version.py --expected "$env:EXPECTED_VERSION"
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -182,11 +135,24 @@ jobs:
       - name: Build release
         run: cargo build --release
 
+      - name: Verify binary and resolved library versions
+        env:
+          EXPECTED_VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          $metadata = cargo metadata --format-version 1 --locked | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $jixel = @($metadata.packages | Where-Object { $_.name -eq 'jixel' })
+          if ($jixel.Count -ne 1 -or $jixel[0].version -ne $env:EXPECTED_VERSION) {
+            throw "Resolved jixel version does not match $($env:EXPECTED_VERSION)"
+          }
+          $version = & .\target\release\jixel-cli.exe --version
+          if ($LASTEXITCODE -ne 0 -or $version -ne "jixel-cli $($env:EXPECTED_VERSION)") {
+            throw "Unexpected CLI version: $version"
+          }
+
       - name: Run tests
         run: |
-          # Full pipeline: 8-bit fixtures -> 16-bit/float fixtures ->
-          # encode matrix -> jxl-oxide decode verification. gen-test-images
-          # and run-tests must run in the same step (fresh shell per step).
+          # gen-test-images and run-tests share fixtures in the same workspace.
           pwsh -NoProfile -ExecutionPolicy Bypass -File ./gen-test-images.ps1
           if ($LASTEXITCODE -ne 0) { exit 1 }
           cargo run --release --example gen16
@@ -197,10 +163,13 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Package executable
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
         run: |
-          $exe = "target\release\jixel-cli.exe"
-          $zip = "jixel-cli-jxl-${{ steps.jixel.outputs.version }}-windows-x86_64.zip"
-          Compress-Archive -Path $exe -DestinationPath $zip
+          $suffix = if ($env:CHANNEL -eq 'nightly') { '-nightly' } else { '' }
+          $zip = "jixel-cli-jxl-$($env:VERSION)$suffix-windows-x86_64.zip"
+          Compress-Archive -Path target\release\jixel-cli.exe -DestinationPath $zip
           Write-Host "Created $zip"
 
       - name: Upload artifact
@@ -210,14 +179,12 @@ jobs:
           path: jixel-cli-jxl-*.zip
 
   release:
-    needs: build
+    needs: [prepare, build]
     runs-on: ubuntu-latest
     steps:
-      # Full history and tags are required: the changelog compares against the
-      # previous release tag, which a shallow single-commit clone cannot see.
       - uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ needs.prepare.outputs.sha }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -229,45 +196,70 @@ jobs:
 
       - name: Generate changelog
         id: changelog
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+          CHANNEL: ${{ needs.prepare.outputs.channel }}
         run: |
-          JXEL_VERSION="${{ needs.build.outputs.jixel_version }}"
-          TAG="v${JXEL_VERSION}"
-
-          # Compare against the most recent existing release tag. ${TAG} does
-          # not exist yet (it is created by the next step), so ${TAG}^ would
-          # never resolve; list only vX.Y.Z tags and take the highest one
-          # that is not the tag being released.
+          set -euo pipefail
+          TAG="v${VERSION}"
+          NAME="jixel-cli ${VERSION}"
+          if [ "$CHANNEL" = nightly ]; then
+            TAG=nightly
+            NAME="jixel-cli ${VERSION} nightly"
+          fi
           PREV_TAG=$(git tag --list 'v[0-9]*' \
-            | grep -vx "$TAG" \
+            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
+            | grep -vxF "$TAG" \
             | sort -V \
-            | tail -n1 || echo "")
+            | tail -n1 || true)
           if [ -n "$PREV_TAG" ]; then
-            CHANGELOG=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s")
+            CHANGELOG=$(git log "${PREV_TAG}..HEAD" --pretty=format:"- %s")
           else
             CHANGELOG=$(git log --pretty=format:"- %s" -n 20)
           fi
+          # A random delimiter prevents commit subjects from ending the output.
+          DELIMITER="changelog_$(openssl rand -hex 16)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "changelog<<$DELIMITER" >> "$GITHUB_OUTPUT"
+          echo "$CHANGELOG" >> "$GITHUB_OUTPUT"
+          echo "$DELIMITER" >> "$GITHUB_OUTPUT"
 
-          echo "version=$JXEL_VERSION" >> $GITHUB_OUTPUT
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "changelog<<EOF" >> $GITHUB_OUTPUT
-          echo "$CHANGELOG" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+      - name: Update rolling nightly tag and assets
+        if: needs.prepare.outputs.channel == 'nightly'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          git tag --force nightly HEAD
+          git push --force origin refs/tags/nightly
+          # Remove obsolete versioned ZIPs from the rolling release.
+          if gh release view nightly > /dev/null 2>&1; then
+            while IFS= read -r asset; do
+              gh release delete-asset nightly "$asset" --yes
+            done < <(gh release view nightly --json assets --jq '.assets[].name')
+          fi
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.changelog.outputs.tag }}
-          name: jixel-cli ${{ steps.changelog.outputs.version }}
+          target_commitish: ${{ needs.prepare.outputs.sha }}
+          name: ${{ steps.changelog.outputs.name }}
           body: |
-            ## jixel-cli — jxl ${{ steps.changelog.outputs.version }}
+            ## ${{ steps.changelog.outputs.name }}
 
-            CLI wrapper for the **jixel** JPEG XL encoder, built against
-            jixel **${{ steps.changelog.outputs.version }}**.
+            CLI wrapper for the **jixel** JPEG XL encoder. Both jixel-cli and
+            jixel use version **${{ needs.prepare.outputs.version }}**.
+
+            Channel: **${{ needs.prepare.outputs.channel }}**
+            Commit: ${{ needs.prepare.outputs.sha }}
 
             ### Changes
             ${{ steps.changelog.outputs.changelog }}
           files: ./release/*.zip
           draft: false
-          prerelease: false
+          prerelease: ${{ needs.prepare.outputs.channel == 'nightly' }}
+          make_latest: ${{ needs.prepare.outputs.channel == 'stable' && 'true' || 'false' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

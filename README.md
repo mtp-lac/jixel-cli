@@ -2,7 +2,7 @@
 
 A Windows command-line adapter for the [jixel](https://github.com/awxkee/jixel)
 JPEG XL encoder library. The library is used **unmodified** as a crates.io
-dependency (`jixel 0.5.7`), and the command-line interface follows **libjxl's
+dependency, and the command-line interface follows **libjxl's
 `cjxl`**: same positionals, flag spellings, and default semantics wherever
 jixel's API can express them. See [docs/cjxl-alignment.md](<docs/cjxl-alignment.md>)
 for the full diff.
